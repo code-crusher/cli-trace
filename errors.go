@@ -55,11 +55,14 @@ type errRequiredFlags struct {
 }
 
 func (e *errRequiredFlags) Error() string {
-	if len(e.missingFlags) == 1 {
-		return fmt.Sprintf("Required flag %q not set", e.missingFlags[0])
-	}
-	joinedMissingFlags := strings.Join(e.missingFlags, ", ")
-	return fmt.Sprintf("Required flags %q not set", joinedMissingFlags)
+	return e.localize(English)
+}
+
+func (e *errRequiredFlags) localize(loc Localizer) string {
+	return loc.Message("error.required_flag", MessageArgs{
+		Flag:  strings.Join(e.missingFlags, ", "),
+		Count: len(e.missingFlags),
+	})
 }
 
 type requiredArgumentsErr interface {
@@ -71,11 +74,14 @@ type errRequiredArguments struct {
 }
 
 func (e *errRequiredArguments) Error() string {
-	if len(e.missingArguments) == 1 {
-		return fmt.Sprintf("Required argument %q not set", e.missingArguments[0])
-	}
-	joinedMissingArguments := strings.Join(e.missingArguments, ", ")
-	return fmt.Sprintf("Required arguments %q not set", joinedMissingArguments)
+	return e.localize(English)
+}
+
+func (e *errRequiredArguments) localize(loc Localizer) string {
+	return loc.Message("error.required_arg", MessageArgs{
+		Arg:   strings.Join(e.missingArguments, ", "),
+		Count: len(e.missingArguments),
+	})
 }
 
 type mutuallyExclusiveGroup struct {
@@ -84,7 +90,14 @@ type mutuallyExclusiveGroup struct {
 }
 
 func (e *mutuallyExclusiveGroup) Error() string {
-	return fmt.Sprintf("option %s cannot be set along with option %s", e.flag1Name, e.flag2Name)
+	return e.localize(English)
+}
+
+func (e *mutuallyExclusiveGroup) localize(loc Localizer) string {
+	return loc.Message("error.flag_conflict", MessageArgs{
+		Flag:    e.flag1Name,
+		Choices: e.flag2Name,
+	})
 }
 
 type mutuallyExclusiveGroupRequiredFlag struct {
@@ -92,6 +105,10 @@ type mutuallyExclusiveGroupRequiredFlag struct {
 }
 
 func (e *mutuallyExclusiveGroupRequiredFlag) Error() string {
+	return e.localize(English)
+}
+
+func (e *mutuallyExclusiveGroupRequiredFlag) localize(loc Localizer) string {
 	var missingFlags []string
 	for _, grpf := range e.flags.Flags {
 		var grpString []string
@@ -101,7 +118,9 @@ func (e *mutuallyExclusiveGroupRequiredFlag) Error() string {
 		missingFlags = append(missingFlags, strings.Join(grpString, " "))
 	}
 
-	return fmt.Sprintf("one of these flags needs to be provided: %s", strings.Join(missingFlags, ", "))
+	return loc.Message("error.flag_requires", MessageArgs{
+		Choices: strings.Join(missingFlags, ", "),
+	})
 }
 
 // ErrorFormatter is the interface that will suitably format the error output
