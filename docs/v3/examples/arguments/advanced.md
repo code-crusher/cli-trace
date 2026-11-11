@@ -324,3 +324,55 @@ corresponding `cmd.{Type}Args()` function:
 ```
 
 With the command above, `cmd.StringArgs("rest")` returns `[]string{"bar"}` while `cmd.Args()` is empty.
+
+## Arguments before a subcommand
+
+A command's declared arguments come before its subcommands, so a command tree can mirror nested resources:
+
+```sh-session
+$ manage author 42 book 7 delete
+```
+
+Here `author` declares a `StringArg` named `authorID` and has a `book` subcommand, which declares a `bookID` argument
+and has a `delete` subcommand. Each argument is parsed by the command that declares it before the subcommand that
+follows it is run, and the value can be read from the action of any descendant command with `cmd.StringArg()`:
+
+```go
+cmd := &cli.Command{
+	Name: "manage",
+	Commands: []*cli.Command{
+		{
+			Name: "author",
+			Arguments: []cli.Argument{
+				&cli.StringArg{Name: "authorID"},
+			},
+			Commands: []*cli.Command{
+				{
+					Name: "book",
+					Arguments: []cli.Argument{
+						&cli.StringArg{Name: "bookID"},
+					},
+					Commands: []*cli.Command{
+						{
+							Name: "delete",
+							Action: func(ctx context.Context, cmd *cli.Command) error {
+								fmt.Printf("delete book %s of author %s\n",
+									cmd.StringArg("bookID"), cmd.StringArg("authorID"))
+								return nil
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+}
+```
+
+An argument is only consumed when a subcommand follows it. If the token in its place names a subcommand, the subcommand
+is run and the argument is reported missing when it is required. A multi-value argument stops at a subcommand name
+rather than consuming it, and `cmd.Args()` of the command that ran contains only the arguments left after its own.
+
+This only applies to the argument types this package provides. A custom `Argument` implementation that does not report
+how many arguments it consumes keeps the older behavior, in which the first positional argument always names the
+subcommand.

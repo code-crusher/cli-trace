@@ -270,6 +270,29 @@ func (cmd *Command) run(ctx context.Context, osArgs []string) (_ context.Context
 	if cmd.parsedArgs.Present() {
 		tracef("checking positional args %[1]q (cmd=%[2]q)", cmd.parsedArgs, cmd.Name)
 
+		// The positional arguments declared in cmd.Arguments come before any
+		// subcommand, as in "manage author 123 book 456". When a subcommand
+		// follows them, parse the arguments in front of it here: the
+		// subcommand handles the rest of the run, so nothing else would parse
+		// them.
+		args := cmd.parsedArgs.Slice()
+		if n := cmd.declaredArgCount(args); n < len(args) && cmd.Command(args[n]) != nil {
+			// A completion request only needs the subcommand, and an invalid
+			// argument value must not be written into its suggestions.
+			if !cmd.Root().shellCompletion {
+				// Required arguments are checked against the arguments in
+				// front of the subcommand, as they would be without one.
+				cmd.parsedArgs = &stringSliceArgs{v: args[:n]}
+				if ctx, _, err = cmd.parseArguments(ctx, args[:n]); err != nil {
+					return ctx, err
+				}
+				if err := cmd.checkRequiredArguments(); err != nil {
+					return cmd.handleRequiredError(ctx, err)
+				}
+			}
+			cmd.parsedArgs = &stringSliceArgs{v: args[n:]}
+		}
+
 		name := cmd.parsedArgs.First()
 
 		tracef("using first positional argument as sub-command name=%[1]q (cmd=%[2]q)", name, cmd.Name)
@@ -384,24 +407,10 @@ func (cmd *Command) run(ctx context.Context, osArgs []string) (_ context.Context
 
 	// Run the command action.
 	if len(cmd.Arguments) > 0 {
-		rargs := cmd.Args().Slice()
-		tracef("calling argparse with %[1]v", rargs)
-		for _, arg := range cmd.Arguments {
-			var err error
-			rargs, err = arg.Parse(rargs)
-			if err != nil {
-				tracef("calling with %[1]v (cmd=%[2]q)", err, cmd.Name)
-				if _, ok := err.(*errRequiredArguments); ok {
-					return cmd.handleRequiredError(ctx, err)
-				}
-				if cmd.OnUsageError != nil {
-					err = cmd.OnUsageError(ctx, cmd, err, cmd.parent != nil)
-				}
-				err = cmd.handleExitCoder(ctx, err)
-				return ctx, err
-			}
+		var actionErr error
+		if ctx, cmd.parsedArgs, actionErr = cmd.parseArguments(ctx, cmd.Args().Slice()); actionErr != nil {
+			return ctx, actionErr
 		}
-		cmd.parsedArgs = &stringSliceArgs{v: rargs}
 	}
 
 	if err := cmd.Action(ctx, cmd); err != nil {
@@ -411,6 +420,57 @@ func (cmd *Command) run(ctx context.Context, osArgs []string) (_ context.Context
 
 	tracef("returning deferErr (cmd=%[1]q) %[2]q", cmd.Name, deferErr)
 	return ctx, deferErr
+}
+
+// parseArguments parses cmd's declared Arguments from args and returns the
+// arguments they did not consume. A parse error is reported the same way as
+// one encountered while running the command action: a missing required
+// argument shows the help, and any other error goes through OnUsageError and
+// handleExitCoder.
+func (cmd *Command) parseArguments(ctx context.Context, args []string) (context.Context, Args, error) {
+	tracef("calling argparse with %[1]v", args)
+	rargs := args
+	for _, arg := range cmd.Arguments {
+		var err error
+		rargs, err = arg.Parse(rargs)
+		if err != nil {
+			tracef("calling with %[1]v (cmd=%[2]q)", err, cmd.Name)
+			if _, ok := err.(*errRequiredArguments); ok {
+				ctx, err = cmd.handleRequiredError(ctx, err)
+				return ctx, cmd.parsedArgs, err
+			}
+			if cmd.OnUsageError != nil {
+				err = cmd.OnUsageError(ctx, cmd, err, cmd.parent != nil)
+			}
+			err = cmd.handleExitCoder(ctx, err)
+			return ctx, cmd.parsedArgs, err
+		}
+	}
+	return ctx, &stringSliceArgs{v: rargs}, nil
+}
+
+// declaredArgCount reports how many of the leading arguments in args the
+// command's declared Arguments consume. It lets a command recognize a
+// subcommand that follows its arguments, as in
+// "manage author 123 book 456 delete".
+//
+// An Argument that does not report how much it consumes makes the count
+// unknown, in which case it returns 0 and the first argument is treated as
+// the subcommand name, as before.
+func (cmd *Command) declaredArgCount(args []string) int {
+	isCommand := func(name string) bool { return cmd.Command(name) != nil }
+	n := 0
+	for _, arg := range cmd.Arguments {
+		counter, ok := arg.(argCounter)
+		if !ok {
+			return 0
+		}
+		n += counter.countArgs(args[n:], isCommand)
+		if n >= len(args) {
+			break
+		}
+	}
+	return n
 }
 
 func (cmd *Command) handleRequiredError(ctx context.Context, err error) (context.Context, error) {

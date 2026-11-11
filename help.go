@@ -485,8 +485,14 @@ func shouldRunCompletion(cmd *Command) bool {
 	}
 
 	if argsArguments := cmd.Args(); argsArguments.Present() {
-		name := argsArguments.First()
-		if cmd := cmd.Command(name); cmd != nil {
+		// A subcommand may follow the command's declared arguments, as in
+		// "manage author 123 book", so skip those arguments when looking for
+		// the command to complete.
+		args := argsArguments.Slice()
+		if n := cmd.declaredArgCount(args); n > 0 && n < len(args) {
+			args = args[n:]
+		}
+		if cmd := cmd.Command(args[0]); cmd != nil {
 			// let the command handle the completion
 			return false
 		}

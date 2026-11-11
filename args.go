@@ -82,6 +82,14 @@ type requiredArgument interface {
 	required() bool
 }
 
+// argCounter is implemented by the built-in Argument types. It reports how
+// many of the given arguments the argument consumes, without parsing them, so
+// that a command can tell where its declared arguments end and a subcommand
+// may start. isCommand reports whether a token names a subcommand.
+type argCounter interface {
+	countArgs(s []string, isCommand func(string) bool) int
+}
+
 // AnyArguments to differentiate between no arguments(nil) vs aleast one
 var AnyArguments = []Argument{
 	&StringArgs{
@@ -110,6 +118,17 @@ func (a *ArgumentBase[T, C, VC]) name() string {
 
 func (a *ArgumentBase[T, C, VC]) required() bool {
 	return a.Required
+}
+
+// countArgs returns how many of s the argument consumes: one if any argument
+// is present, none otherwise. A subcommand name is never consumed, so a
+// command that declares an argument can still dispatch to a subcommand
+// given without it.
+func (a *ArgumentBase[T, C, VC]) countArgs(s []string, isCommand func(string) bool) int {
+	if len(s) > 0 && !isCommand(s[0]) {
+		return 1
+	}
+	return 0
 }
 
 func (a *ArgumentBase[T, C, VC]) Usage() string {
@@ -178,6 +197,21 @@ type ArgumentsBase[T any, C any, VC ValueCreator[T, C]] struct {
 
 func (a *ArgumentsBase[T, C, VC]) HasName(s string) bool {
 	return s == a.Name
+}
+
+// countArgs returns how many of s the argument consumes, honouring Max the
+// same way Parse does. It stops at a subcommand name, so a glob argument does
+// not swallow the subcommand that follows it.
+func (a *ArgumentsBase[T, C, VC]) countArgs(s []string, isCommand func(string) bool) int {
+	limit := a.Max
+	if limit == -1 {
+		limit = len(s)
+	}
+	n := 0
+	for n < limit && n < len(s) && !isCommand(s[n]) {
+		n++
+	}
+	return n
 }
 
 func (a *ArgumentsBase[T, C, VC]) Usage() string {
@@ -281,10 +315,15 @@ type (
 
 func (c *Command) getArgValue(name string) any {
 	tracef("command %s looking for args %s", c.Name, name)
-	for _, arg := range c.Arguments {
-		if arg.HasName(name) {
-			tracef("command %s found args %s", c.Name, name)
-			return arg.Get()
+	// Arguments declared on an ancestor are parsed before the subcommand that
+	// follows them, so a subcommand's action can read them. As with flags,
+	// the nearest command that declares the argument wins.
+	for pCmd := c; pCmd != nil; pCmd = pCmd.parent {
+		for _, arg := range pCmd.Arguments {
+			if arg.HasName(name) {
+				tracef("command %s found args %s", pCmd.Name, name)
+				return arg.Get()
+			}
 		}
 	}
 	tracef("command %s did not find args %s", c.Name, name)
