@@ -1,4 +1,4 @@
-//go:build !urfave_cli_no_template
+//go:build !urfave_cli_no_template && !urfave_cli_no_completion
 
 package cli
 

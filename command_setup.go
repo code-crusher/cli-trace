@@ -20,10 +20,7 @@ func (cmd *Command) setupDefaults(osArgs []string) {
 	isRoot := cmd.parent == nil
 	tracef("isRoot? %[1]v (cmd=%[2]q)", isRoot, cmd.Name)
 
-	if cmd.ShellComplete == nil {
-		tracef("setting default ShellComplete (cmd=%[1]q)", cmd.Name)
-		cmd.ShellComplete = DefaultCompleteWithFlags
-	}
+	cmd.setupShellCompletion()
 
 	if cmd.Name == "" && isRoot && len(osArgs) > 0 {
 		name := filepath.Base(osArgs[0])
@@ -126,25 +123,7 @@ func (cmd *Command) setupDefaults(osArgs []string) {
 		cmd.SuggestCommandFunc = suggestCommand
 	}
 
-	if isRoot && cmd.EnableShellCompletion || cmd.ConfigureShellCompletionCommand != nil {
-		name := completionCommandName
-		if cmd.ShellCompletionCommandName != "" {
-			tracef(
-				"setting completion command name (%[1]q) from "+
-					"cmd.ShellCompletionCommandName (cmd=%[2]q)",
-				cmd.ShellCompletionCommandName, cmd.Name,
-			)
-			name = cmd.ShellCompletionCommandName
-		}
-
-		completionCommand := buildCompletionCommand(cmd.Name, name)
-
-		tracef("appending completionCommand (cmd=%[1]q)", cmd.Name)
-		cmd.appendCommand(completionCommand)
-		if cmd.ConfigureShellCompletionCommand != nil {
-			cmd.ConfigureShellCompletionCommand(completionCommand)
-		}
-	}
+	cmd.setupCompletionCommand(isRoot)
 
 	tracef("setting command categories (cmd=%[1]q)", cmd.Name)
 	cmd.categories = newCommandCategories()

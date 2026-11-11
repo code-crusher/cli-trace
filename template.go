@@ -37,3 +37,13 @@ VERSION:
    {{.Version}}{{end}}{{end}}`
 
 var copyrightTemplate = `{{wrap .Copyright 3}}`
+
+// fishCommandCompletionTemplate is the data rendered by the fish completion
+// template. It is passed to renderFishCompletion, which the template variants
+// (help_template.go and help_notemplate.go) implement so that fish
+// completion rendering follows the urfave_cli_no_template tag.
+type fishCommandCompletionTemplate struct {
+	Command     *Command
+	Completions []string
+	AllCommands []string
+}

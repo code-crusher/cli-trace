@@ -1,3 +1,5 @@
+//go:build !urfave_cli_no_completion
+
 package cli
 
 import (
@@ -20,12 +22,6 @@ func (cmd *Command) ToFishCompletion() (string, error) {
 		return "", err
 	}
 	return w.String(), nil
-}
-
-type fishCommandCompletionTemplate struct {
-	Command     *Command
-	Completions []string
-	AllCommands []string
 }
 
 func (cmd *Command) writeFishCompletionTemplate(w io.Writer) error {
