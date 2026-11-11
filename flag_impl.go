@@ -175,10 +175,13 @@ func (f *FlagBase[T, C, V]) PostParse() error {
 				val = "false"
 			}
 			if err := f.Set(f.Name, val); err != nil {
-				return fmt.Errorf(
-					"could not parse %[1]q as %[2]T value from %[3]s for flag %[4]s: %[5]s",
-					val, f.Value, source, f.Name, err,
-				)
+				return &errSourceValue{
+					value:  val,
+					typ:    fmt.Sprintf("%T", f.Value),
+					source: source.String(),
+					flag:   f.Name,
+					err:    err,
+				}
 			}
 
 			f.hasBeenSet = true
@@ -272,7 +275,7 @@ func (f *FlagBase[T, C, V]) Set(_ string, val string) error {
 	}
 
 	if f.count == 1 && f.OnlyOnce {
-		return fmt.Errorf("can't duplicate this flag")
+		return &errDuplicateFlag{}
 	}
 
 	f.count++

@@ -376,7 +376,7 @@ func DefaultShowCommandHelp(ctx context.Context, cmd *Command, commandName strin
 	tracef("no matching command found")
 
 	if cmd.CommandNotFound == nil {
-		errMsg := fmt.Sprintf("No help topic for '%v'", commandName)
+		err := &errNoHelpTopic{topic: commandName}
 
 		if cmd.Suggest {
 			// Hidden commands must not be suggested, as in shell completion.
@@ -387,12 +387,12 @@ func DefaultShowCommandHelp(ctx context.Context, cmd *Command, commandName strin
 				}
 			}
 			if suggestion := SuggestCommand(commands, commandName); suggestion != "" {
-				errMsg += ". " + suggestion
+				err.suggestion = suggestion
 			}
 		}
 
-		tracef("exiting 3 with errMsg %[1]q", errMsg)
-		return Exit(errMsg, 3)
+		tracef("exiting 3 with errMsg %[1]q", err.Error())
+		return Exit(err, 3)
 	}
 
 	tracef("running CommandNotFound func for %[1]q", commandName)

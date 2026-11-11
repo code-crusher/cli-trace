@@ -121,10 +121,13 @@ func (bif *BoolWithInverseFlag) PostParse() error {
 		if val, source, found := bif.Sources.LookupWithSource(); found {
 			val = cmp.Or(strings.TrimSpace(val), "false")
 			if err := bif.Set(bif.Name, val); err != nil {
-				return fmt.Errorf(
-					"could not parse %[1]q as %[2]T value from %[3]s for flag %[4]s: %[5]s",
-					val, bif.Value, source, bif.Name, err,
-				)
+				return &errSourceValue{
+					value:  val,
+					typ:    fmt.Sprintf("%T", bif.Value),
+					source: source.String(),
+					flag:   bif.Name,
+					err:    err,
+				}
 			}
 
 			bif.hasBeenSet = true
@@ -146,7 +149,7 @@ func (bif *BoolWithInverseFlag) Set(name, val string) error {
 	}
 
 	if bif.count > 0 && bif.OnlyOnce {
-		return fmt.Errorf("can't duplicate this flag")
+		return &errDuplicateFlag{}
 	}
 
 	bif.hasBeenSet = true
@@ -186,7 +189,10 @@ func (bif *BoolWithInverseFlag) Set(name, val string) error {
 // same `-` or `--` prefix the help output uses.
 func (bif *BoolWithInverseFlag) errBothSet() error {
 	inverse := bif.inversePrefix() + bif.Name
-	return fmt.Errorf("cannot set both flags `%s%s` and `%s%s`", prefixFor(bif.Name), bif.Name, prefixFor(inverse), inverse)
+	return &errBothSetFlags{
+		flag:    prefixFor(bif.Name) + bif.Name,
+		inverse: prefixFor(inverse) + inverse,
+	}
 }
 
 func (bif *BoolWithInverseFlag) Names() []string {

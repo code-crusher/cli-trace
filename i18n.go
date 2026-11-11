@@ -21,6 +21,8 @@ type MessageArgs struct {
 	Arg      string // an argument name
 	Value    string // the offending input
 	Choices  string // a list of related values, such as the other flags
+	Source   string // where a value came from, such as an environment variable
+	Type     string // the Go type a value is parsed as
 	Cause    string // the underlying error, if any
 	Count    int    // quantity used to pick a plural form
 	Expected int    // expected quantity, where a message compares two
@@ -111,6 +113,8 @@ func expand(s string, a MessageArgs) string {
 		"{arg}", a.Arg,
 		"{value}", a.Value,
 		"{choices}", a.Choices,
+		"{source}", a.Source,
+		"{type}", a.Type,
 		"{cause}", a.Cause,
 		"{count}", strconv.Itoa(a.Count),
 		"{expected}", strconv.Itoa(a.Expected),
@@ -135,13 +139,21 @@ var English = &Catalog{
 			One:   `Required argument "{arg}" not set`,
 			Other: `Required arguments "{arg}" not set`,
 		},
-		"error.flag_conflict": {Other: "option {flag} cannot be set along with option {choices}"},
-		"error.flag_requires": {Other: "one of these flags needs to be provided: {choices}"},
+		"error.flag_conflict":  {Other: "option {flag} cannot be set along with option {choices}"},
+		"error.flags_both_set": {Other: "cannot set both flags `{flag}` and `{choices}`"},
+		"error.flag_requires":  {Other: "one of these flags needs to be provided: {choices}"},
 		"error.args_count": {
 			Other: "sufficient count of arg {arg} not provided, given {count} expected {expected}",
 		},
+		"error.duplicate_flag": {Other: "can't duplicate this flag"},
+		"error.source_value": {
+			Other: `could not parse "{value}" as {type} value from {source} for flag {flag}: {cause}`,
+		},
 		"error.no_help_topic":            {Other: "No help topic for '{value}'"},
 		"error.no_help_topic_suggestion": {Other: "No help topic for '{value}'. {choices}"},
+
+		"warning.command_deprecated": {Other: `Command "{command}" is deprecated, {value}`},
+		"warning.flag_deprecated":    {Other: "Flag {flag} has been deprecated, {value}"},
 	},
 }
 
@@ -192,6 +204,9 @@ func localizeError(err error, loc Localizer) string {
 	if err == nil {
 		return ""
 	}
+	if loc == nil {
+		loc = English
+	}
 	if le, ok := err.(localizable); ok {
 		return le.localize(loc)
 	}
@@ -208,4 +223,78 @@ type localizable interface {
 // command line is wrong.
 func (cmd *Command) usageErrorText(err error) string {
 	return cmd.Message("error.usage", MessageArgs{Cause: cmd.Localize(err)})
+}
+
+// DetectLocales returns the user's preferred message languages as BCP 47 tags,
+// most preferred first, following POSIX and GNU gettext rules: LC_ALL, then
+// LC_MESSAGES, then LANG pick the locale, and LANGUAGE, a colon-separated
+// list, takes priority unless the locale is C or POSIX. It returns nil when
+// the user has asked for the default language.
+//
+// lookup is usually [os.LookupEnv]; tests pass their own.
+func DetectLocales(lookup func(string) (string, bool)) []string {
+	var locale string
+	for _, name := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
+		if v, ok := lookup(name); ok && v != "" {
+			locale = v
+			break
+		}
+	}
+	tag := normalizeLocale(locale)
+	if tag == "" {
+		return nil
+	}
+
+	var tags []string
+	if list, ok := lookup("LANGUAGE"); ok {
+		for _, l := range strings.Split(list, ":") {
+			if t := normalizeLocale(l); t != "" {
+				tags = append(tags, t)
+			}
+		}
+	}
+	return append(tags, tag)
+}
+
+// normalizeLocale turns a POSIX locale such as "de_DE.UTF-8@euro" into "de-DE".
+// C and POSIX map to "".
+func normalizeLocale(locale string) string {
+	if i := strings.IndexAny(locale, ".@"); i >= 0 {
+		locale = locale[:i]
+	}
+	if locale == "C" || locale == "POSIX" {
+		return ""
+	}
+	return strings.ReplaceAll(locale, "_", "-")
+}
+
+// SelectLocalizer returns the catalogue that best matches the user's locale,
+// or [English]. An exact tag match wins over a language-only match, so
+// "pt-BR" prefers a pt-BR catalogue to a pt one.
+//
+// lookup is usually [os.LookupEnv]. Use it to pick a Localizer at startup:
+//
+//	cmd.Localizer = cli.SelectLocalizer(os.LookupEnv, de.Catalog)
+func SelectLocalizer(lookup func(string) (string, bool), catalogs ...*Catalog) Localizer {
+	for _, want := range DetectLocales(lookup) {
+		if c := matchCatalog(want, catalogs); c != nil {
+			return c
+		}
+	}
+	return English
+}
+
+func matchCatalog(want string, catalogs []*Catalog) *Catalog {
+	for _, c := range catalogs {
+		if strings.EqualFold(c.Tag, want) {
+			return c
+		}
+	}
+	base, _, _ := strings.Cut(want, "-")
+	for _, c := range catalogs {
+		if strings.EqualFold(c.Tag, base) {
+			return c
+		}
+	}
+	return nil
 }

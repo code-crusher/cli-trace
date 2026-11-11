@@ -123,6 +123,186 @@ func (e *mutuallyExclusiveGroupRequiredFlag) localize(loc Localizer) string {
 	})
 }
 
+// errUnknownFlag reports a flag the command does not define. name is written
+// without its dashes, as the parser receives it.
+type errUnknownFlag struct {
+	name string
+}
+
+func newErrUnknownFlag(name string) *errUnknownFlag {
+	return &errUnknownFlag{name: name}
+}
+
+func (e *errUnknownFlag) Error() string {
+	return e.localize(English)
+}
+
+func (e *errUnknownFlag) localize(loc Localizer) string {
+	return loc.Message("error.unknown_flag", MessageArgs{Flag: e.name})
+}
+
+// errMissingValue reports a flag given without the value it needs. flag is
+// written with its dashes, as it appeared on the command line.
+type errMissingValue struct {
+	flag string
+}
+
+func newErrMissingValue(flag string) *errMissingValue {
+	return &errMissingValue{flag: flag}
+}
+
+func (e *errMissingValue) Error() string {
+	return e.localize(English)
+}
+
+func (e *errMissingValue) localize(loc Localizer) string {
+	return loc.Message("error.missing_value", MessageArgs{Flag: e.flag})
+}
+
+// errInvalidArgValue reports an argument whose value could not be parsed.
+type errInvalidArgValue struct {
+	value string
+	arg   string
+	err   error
+}
+
+func (e *errInvalidArgValue) Error() string {
+	return e.localize(English)
+}
+
+func (e *errInvalidArgValue) Unwrap() error {
+	return e.err
+}
+
+func (e *errInvalidArgValue) localize(loc Localizer) string {
+	return loc.Message("error.invalid_arg_value", MessageArgs{
+		Value: e.value,
+		Arg:   e.arg,
+		Cause: e.err.Error(),
+	})
+}
+
+// errInvalidFlagValue reports a flag whose value could not be parsed. flag is
+// written without its dashes.
+type errInvalidFlagValue struct {
+	value string
+	flag  string
+	err   error
+}
+
+func (e *errInvalidFlagValue) Error() string {
+	return e.localize(English)
+}
+
+func (e *errInvalidFlagValue) Unwrap() error {
+	return e.err
+}
+
+func (e *errInvalidFlagValue) localize(loc Localizer) string {
+	return loc.Message("error.invalid_value", MessageArgs{
+		Value: e.value,
+		Flag:  e.flag,
+		Cause: e.err.Error(),
+	})
+}
+
+// errDuplicateFlag reports a flag that may be given only once, given twice.
+type errDuplicateFlag struct{}
+
+func (e *errDuplicateFlag) Error() string {
+	return e.localize(English)
+}
+
+func (e *errDuplicateFlag) localize(loc Localizer) string {
+	return loc.Message("error.duplicate_flag", MessageArgs{})
+}
+
+// errSourceValue reports a value from a flag's Sources, such as an
+// environment variable, that could not be parsed.
+type errSourceValue struct {
+	value  string
+	typ    string
+	source string
+	flag   string
+	err    error
+}
+
+func (e *errSourceValue) Error() string {
+	return e.localize(English)
+}
+
+func (e *errSourceValue) Unwrap() error {
+	return e.err
+}
+
+func (e *errSourceValue) localize(loc Localizer) string {
+	return loc.Message("error.source_value", MessageArgs{
+		Value:  e.value,
+		Type:   e.typ,
+		Source: e.source,
+		Flag:   e.flag,
+		Cause:  e.err.Error(),
+	})
+}
+
+// errBothSetFlags reports a flag and its inverse set in the same command.
+// Both names are written with their dashes.
+type errBothSetFlags struct {
+	flag    string
+	inverse string
+}
+
+func (e *errBothSetFlags) Error() string {
+	return e.localize(English)
+}
+
+func (e *errBothSetFlags) localize(loc Localizer) string {
+	return loc.Message("error.flags_both_set", MessageArgs{
+		Flag:    e.flag,
+		Choices: e.inverse,
+	})
+}
+
+// errArgsCount reports too few values for an argument that has a minimum.
+type errArgsCount struct {
+	arg      string
+	count    int
+	expected int
+}
+
+func (e *errArgsCount) Error() string {
+	return e.localize(English)
+}
+
+func (e *errArgsCount) localize(loc Localizer) string {
+	return loc.Message("error.args_count", MessageArgs{
+		Arg:      e.arg,
+		Count:    e.count,
+		Expected: e.expected,
+	})
+}
+
+// errNoHelpTopic reports a help request for a command that does not exist.
+// suggestion, when set, is the already-rendered "Did you mean" hint.
+type errNoHelpTopic struct {
+	topic      string
+	suggestion string
+}
+
+func (e *errNoHelpTopic) Error() string {
+	return e.localize(English)
+}
+
+func (e *errNoHelpTopic) localize(loc Localizer) string {
+	if e.suggestion != "" {
+		return loc.Message("error.no_help_topic_suggestion", MessageArgs{
+			Value:   e.topic,
+			Choices: e.suggestion,
+		})
+	}
+	return loc.Message("error.no_help_topic", MessageArgs{Value: e.topic})
+}
+
 // ErrorFormatter is the interface that will suitably format the error output
 type ErrorFormatter interface {
 	Format(s fmt.State, verb rune)
@@ -178,6 +358,10 @@ func (ee *exitError) Unwrap() error {
 	return ee.err
 }
 
+func (ee *exitError) localize(loc Localizer) string {
+	return localizeError(ee.err, loc)
+}
+
 // HandleExitCoder handles errors implementing ExitCoder by printing their
 // message and calling OsExiter with the given exit code.
 //
@@ -190,6 +374,12 @@ func (ee *exitError) Unwrap() error {
 //
 // This function is the default error-handling behavior for a Command.
 func HandleExitCoder(err error) {
+	handleExitCoder(err, DefaultLocalizer)
+}
+
+// handleExitCoder is [HandleExitCoder] rendering messages with loc. A Command
+// passes its own Localizer, so that errors it prints are in its language.
+func handleExitCoder(err error, loc Localizer) {
 	if err == nil {
 		return
 	}
@@ -198,7 +388,7 @@ func HandleExitCoder(err error) {
 	// A MultiError is handled as a whole: unwrapping it would find its first
 	// ExitCoder and lose the documented "last exit code wins".
 	if multiErr, ok := err.(MultiError); ok && !isExitCoder {
-		code := handleMultiError(multiErr)
+		code := handleMultiError(multiErr, loc)
 		OsExiter(code)
 		return
 	}
@@ -208,7 +398,7 @@ func HandleExitCoder(err error) {
 			if _, ok := exitErr.(ErrorFormatter); ok {
 				_, _ = fmt.Fprintf(ErrWriter, "%+v\n", err)
 			} else {
-				_, _ = fmt.Fprintln(ErrWriter, err)
+				_, _ = fmt.Fprintln(ErrWriter, localizeError(err, loc))
 			}
 		}
 		OsExiter(exitErr.ExitCode())
@@ -216,13 +406,17 @@ func HandleExitCoder(err error) {
 	}
 }
 
-func handleMultiError(multiErr MultiError) int {
+func handleMultiError(multiErr MultiError, loc Localizer) int {
 	code := 1
 	for _, merr := range multiErr.Errors() {
 		if multiErr2, ok := merr.(MultiError); ok {
-			code = handleMultiError(multiErr2)
+			code = handleMultiError(multiErr2, loc)
 		} else if merr != nil {
-			fmt.Fprintln(ErrWriter, merr)
+			if _, ok := merr.(ErrorFormatter); ok {
+				_, _ = fmt.Fprintf(ErrWriter, "%+v\n", merr)
+			} else {
+				_, _ = fmt.Fprintln(ErrWriter, localizeError(merr, loc))
+			}
 			if exitErr, ok := errors.AsType[ExitCoder](merr); ok {
 				code = exitErr.ExitCode()
 			}

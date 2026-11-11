@@ -97,6 +97,10 @@ type Command struct {
 	Writer io.Writer `json:"-"`
 	// ErrWriter writes error output
 	ErrWriter io.Writer `json:"-"`
+	// Localizer renders the messages the library prints, such as usage errors,
+	// in the command's language. It is inherited from the nearest ancestor
+	// that sets one, and defaults to DefaultLocalizer.
+	Localizer Localizer `json:"-"`
 	// ExitErrHandler processes any error encountered while running a Command before it is
 	// returned to the caller. If no function is provided, HandleExitCoder is used as the
 	// default behavior.
@@ -392,7 +396,7 @@ func (cmd *Command) handleExitCoder(ctx context.Context, err error) error {
 		return err
 	}
 
-	HandleExitCoder(err)
+	handleExitCoder(err, cmd.localizer())
 	return err
 }
 
@@ -416,7 +420,7 @@ func (cmd *Command) set(fName string, f Flag, val string) error {
 	cmd.setFlags[f] = struct{}{}
 	cmd.setMultiValueParsingConfig(f)
 	if err := f.Set(fName, val); err != nil {
-		return fmt.Errorf("invalid value %q for flag -%s: %v", val, fName, err)
+		return &errInvalidFlagValue{value: val, flag: fName, err: err}
 	}
 	return nil
 }

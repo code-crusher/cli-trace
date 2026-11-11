@@ -88,6 +88,42 @@ var DefaultAppComplete = DefaultRootCommandComplete
     DefaultRootCommandComplete.
 
 var DefaultInverseBoolPrefix = "no-"
+var English = &Catalog{
+	Tag:    "en",
+	Plural: OneOther,
+	Messages: map[string]Text{
+		"error.usage":             {Other: "Incorrect Usage: {cause}"},
+		"error.unknown_flag":      {Other: "flag provided but not defined: -{flag}"},
+		"error.missing_value":     {Other: "flag needs an argument: {flag}"},
+		"error.invalid_value":     {Other: `invalid value "{value}" for flag -{flag}: {cause}`},
+		"error.invalid_arg_value": {Other: `invalid value "{value}" for argument {arg}: {cause}`},
+		"error.required_flag": {
+			One:   `Required flag "{flag}" not set`,
+			Other: `Required flags "{flag}" not set`,
+		},
+		"error.required_arg": {
+			One:   `Required argument "{arg}" not set`,
+			Other: `Required arguments "{arg}" not set`,
+		},
+		"error.flag_conflict":  {Other: "option {flag} cannot be set along with option {choices}"},
+		"error.flags_both_set": {Other: "cannot set both flags `{flag}` and `{choices}`"},
+		"error.flag_requires":  {Other: "one of these flags needs to be provided: {choices}"},
+		"error.args_count": {
+			Other: "sufficient count of arg {arg} not provided, given {count} expected {expected}",
+		},
+		"error.duplicate_flag": {Other: "can't duplicate this flag"},
+		"error.source_value": {
+			Other: `could not parse "{value}" as {type} value from {source} for flag {flag}: {cause}`,
+		},
+		"error.no_help_topic":            {Other: "No help topic for '{value}'"},
+		"error.no_help_topic_suggestion": {Other: "No help topic for '{value}'. {choices}"},
+
+		"warning.command_deprecated": {Other: `Command "{command}" is deprecated, {value}`},
+		"warning.flag_deprecated":    {Other: "Flag {flag} has been deprecated, {value}"},
+	},
+}
+    English is the built-in catalogue and the final fallback for every other.
+
 var ErrWriter io.Writer = os.Stderr
     ErrWriter is used to write errors to the user. This can be anything
     implementing the io.Writer interface and defaults to os.Stderr.
@@ -216,6 +252,15 @@ func DefaultShowSubcommandHelp(cmd *Command) error
     DefaultShowSubcommandHelp is the default implementation of
     ShowSubcommandHelp.
 
+func DetectLocales(lookup func(string) (string, bool)) []string
+    DetectLocales returns the user's preferred message languages as BCP 47 tags,
+    most preferred first, following POSIX and GNU gettext rules: LC_ALL,
+    then LC_MESSAGES, then LANG pick the locale, and LANGUAGE, a colon-separated
+    list, takes priority unless the locale is C or POSIX. It returns nil when
+    the user has asked for the default language.
+
+    lookup is usually os.LookupEnv; tests pass their own.
+
 func FlagNames(name string, aliases []string) []string
 func HandleExitCoder(err error)
     HandleExitCoder handles errors implementing ExitCoder by printing their
@@ -229,6 +274,10 @@ func HandleExitCoder(err error)
     so adding context to an error does not lose its exit code.
 
     This function is the default error-handling behavior for a Command.
+
+func Keys() []string
+    Keys returns every key the library uses, sorted. A translation is complete
+    when it covers all of them.
 
 func ShowCommandHelpAndExit(ctx context.Context, cmd *Command, command string, code int)
     ShowCommandHelpAndExit exits with code after showing help via
@@ -454,6 +503,18 @@ func (bif *BoolWithInverseFlag) TakesValue() bool
 func (bif *BoolWithInverseFlag) TypeName() string
     TypeName is used for stringify/docs. For bool its a no-op
 
+type Catalog struct {
+	Tag      string           // BCP 47 tag, e.g. "de" or "pt-BR"
+	Plural   func(n int) Form // nil means every count uses Other
+	Messages map[string]Text
+	Fallback Localizer // used for missing keys; nil means English
+}
+    Catalog is a map-based Localizer for one language. Messages it does not have
+    fall back to English, so a partial translation is usable.
+
+func (c *Catalog) Message(key string, a MessageArgs) string
+    Message renders key, falling back when the catalogue lacks it.
+
 type CategorizableFlag interface {
 	// Returns the category of the flag
 	GetCategory() string
@@ -541,6 +602,10 @@ type Command struct {
 	Writer io.Writer `json:"-"`
 	// ErrWriter writes error output
 	ErrWriter io.Writer `json:"-"`
+	// Localizer renders the messages the library prints, such as usage errors,
+	// in the command's language. It is inherited from the nearest ancestor
+	// that sets one, and defaults to DefaultLocalizer.
+	Localizer Localizer `json:"-"`
 	// ExitErrHandler processes any error encountered while running a Command before it is
 	// returned to the caller. If no function is provided, HandleExitCoder is used as the
 	// default behavior.
@@ -733,6 +798,14 @@ func (cmd *Command) Lineage() []*Command
 
 func (cmd *Command) LocalFlagNames() []string
     LocalFlagNames returns a slice of flag names used in this command.
+
+func (cmd *Command) Localize(err error) string
+    Localize renders err in the command's language. Errors the library did not
+    create are returned as they are.
+
+func (cmd *Command) Message(key string, args MessageArgs) string
+    Message renders a catalogue message in the command's language. key is one of
+    Keys and args fill the message's placeholders.
 
 func (cmd *Command) NArg() int
     NArg returns the number of the command line arguments.
@@ -1214,6 +1287,21 @@ type FloatSlice = SliceBase[float64, NoConfig, floatValue[float64]]
 
 type FloatSliceFlag = FlagBase[[]float64, NoConfig, FloatSlice]
 
+type Form uint8
+    Form is a CLDR plural category.
+
+const (
+	Other Form = iota
+	Zero
+	One
+	Two
+	Few
+	Many
+)
+func OneOther(n int) Form
+    OneOther is the plural rule for English, German, Dutch, Swedish and other
+    languages that only distinguish one from many.
+
 type GenericFlag = FlagBase[Value, NoConfig, genericValue]
 
 type HelpPrinterCustomFunc func(w io.Writer, templ string, data any, customFunc map[string]any)
@@ -1307,6 +1395,30 @@ type LocalFlag interface {
     LocalFlag is an interface to enable detection of flags which are local to
     current command
 
+type Localizer interface {
+	Message(key string, args MessageArgs) string
+}
+    Localizer renders a message from a catalogue. Keys are stable and listed by
+    Keys; args fill the message's placeholders.
+
+var DefaultLocalizer Localizer = English
+    DefaultLocalizer renders the messages the library prints for commands that
+    do not set a Command.Localizer. It defaults to English; set it once at
+    startup to translate the output of every command.
+
+    It does not change the text returned by an error's Error method, which is
+    always English so that callers can match on it. Use Command.Localize to
+    render an error in a command's language.
+
+func SelectLocalizer(lookup func(string) (string, bool), catalogs ...*Catalog) Localizer
+    SelectLocalizer returns the catalogue that best matches the user's locale,
+    or English. An exact tag match wins over a language-only match, so "pt-BR"
+    prefers a pt-BR catalogue to a pt one.
+
+    lookup is usually os.LookupEnv. Use it to pick a Localizer at startup:
+
+        cmd.Localizer = cli.SelectLocalizer(os.LookupEnv, de.Catalog)
+
 type MapBase[T any, C any, VC ValueCreator[T, C]] struct {
 	// Has unexported fields.
 }
@@ -1347,6 +1459,21 @@ type MapSource interface {
     typically for use with a cli.Flag
 
 func NewMapSource(name string, m map[any]any) MapSource
+
+type MessageArgs struct {
+	Command  string // name of the command the message is about
+	Flag     string // a flag name, as it is written on the command line
+	Arg      string // an argument name
+	Value    string // the offending input
+	Choices  string // a list of related values, such as the other flags
+	Source   string // where a value came from, such as an environment variable
+	Type     string // the Go type a value is parsed as
+	Cause    string // the underlying error, if any
+	Count    int    // quantity used to pick a plural form
+	Expected int    // expected quantity, where a message compares two
+}
+    MessageArgs are the values a message can refer to. Each field is available
+    as a placeholder of the same name in lower case, e.g. {flag} or {count}.
 
 type MultiError interface {
 	error
@@ -1485,6 +1612,12 @@ type StringerSetter interface {
 type SuggestCommandFunc func(commands []*Command, provided string) string
 
 type SuggestFlagFunc func(flags []Flag, provided string, hideHelp bool) string
+
+type Text struct {
+	Zero, One, Two, Few, Many, Other string
+}
+    Text is one message in all the plural forms a language needs. Other is
+    required; the rest fall back to it.
 
 type TextFlag = FlagBase[TextMarshalUnmarshaler, StringConfig, textValue]
 

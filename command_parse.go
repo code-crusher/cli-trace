@@ -1,21 +1,26 @@
 package cli
 
 import (
-	"fmt"
+	"errors"
 	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
-const (
-	providedButNotDefinedErrMsg = "flag provided but not defined: -"
-	argumentNotProvidedErrMsg   = "flag needs an argument: "
-)
+// providedButNotDefinedErrMsg is the English prefix of an unknown-flag error.
+// The parser returns an *errUnknownFlag, but a caller may build the same
+// message as plain text, so [flagFromError] still recognises it.
+const providedButNotDefinedErrMsg = "flag provided but not defined: -"
 
 // flagFromError tries to parse a provided flag from an error message. If the
 // parsing fails, it returns the input error and an empty string
 func flagFromError(err error) (string, error) {
+	var unknownFlag *errUnknownFlag
+	if errors.As(err, &unknownFlag) {
+		return unknownFlag.name, nil
+	}
+
 	trimmed, ok := strings.CutPrefix(err.Error(), providedButNotDefinedErrMsg)
 	if !ok {
 		return "", err
@@ -182,7 +187,7 @@ func (cmd *Command) parseFlags(args Args) (Args, error) {
 						posArgs = append(posArgs, rargs...)
 						return &stringSliceArgs{posArgs}, nil
 					}
-					return &stringSliceArgs{posArgs}, fmt.Errorf("%s%s", argumentNotProvidedErrMsg, firstArg)
+					return &stringSliceArgs{posArgs}, newErrMissingValue(firstArg)
 				}
 				flagVal = rargs[1]
 				rargs = rargs[1:]
@@ -210,7 +215,7 @@ func (cmd *Command) parseFlags(args Args) (Args, error) {
 				posArgs = append(posArgs, rargs...)
 				return &stringSliceArgs{posArgs}, nil
 			}
-			return &stringSliceArgs{posArgs}, fmt.Errorf("%s%s", providedButNotDefinedErrMsg, flagName)
+			return &stringSliceArgs{posArgs}, newErrUnknownFlag(flagName)
 		}
 
 		// ranging over flagName yields byte offsets, so the last flag starts
@@ -233,7 +238,7 @@ func (cmd *Command) parseFlags(args Args) (Args, error) {
 					posArgs = append(posArgs, rargs...)
 					return &stringSliceArgs{posArgs}, nil
 				}
-				return &stringSliceArgs{posArgs}, fmt.Errorf("%s%s", providedButNotDefinedErrMsg, flagName)
+				return &stringSliceArgs{posArgs}, newErrUnknownFlag(flagName)
 			}
 		}
 
@@ -262,7 +267,7 @@ func (cmd *Command) parseFlags(args Args) (Args, error) {
 							posArgs = append(posArgs, rargs...)
 							return &stringSliceArgs{posArgs}, nil
 						}
-						return &stringSliceArgs{posArgs}, fmt.Errorf("%s-%c", argumentNotProvidedErrMsg, c)
+						return &stringSliceArgs{posArgs}, newErrMissingValue("-" + string(c))
 					}
 					flagVal = rargs[1]
 					rargs = rargs[1:]
@@ -280,7 +285,7 @@ func (cmd *Command) parseFlags(args Args) (Args, error) {
 					posArgs = append(posArgs, rargs...)
 					return &stringSliceArgs{posArgs}, nil
 				}
-				return &stringSliceArgs{posArgs}, fmt.Errorf("%s-%c", argumentNotProvidedErrMsg, c)
+				return &stringSliceArgs{posArgs}, newErrMissingValue("-" + string(c))
 			}
 		}
 	}

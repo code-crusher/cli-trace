@@ -42,7 +42,8 @@ nav:
               - Generated Help Text: v3/examples/help/generated-help-text.md
               - Suggestions: v3/examples/help/suggestions.md
           - Error Handling:
-              - Exit Codes: v3/examples/exit-codes.md          
+              - Exit Codes: v3/examples/exit-codes.md
+              - Translations: v3/examples/i18n.md
           - Full API Example: v3/examples/full-api-example.md
   - v2 Manual:
       - Getting Started: v2/getting-started.md

@@ -203,7 +203,7 @@ func (cmd *Command) run(ctx context.Context, osArgs []string) (_ context.Context
 			err = cmd.handleExitCoder(ctx, err)
 			return ctx, err
 		}
-		fmt.Fprintf(cmd.Root().ErrWriter, "Incorrect Usage: %s\n\n", err.Error())
+		fmt.Fprintf(cmd.Root().ErrWriter, "%s\n\n", cmd.usageErrorText(err))
 		if cmd.Suggest {
 			if suggestion, err := cmd.suggestFlagFromError(err, ""); err == nil {
 				fmt.Fprintf(cmd.Root().ErrWriter, "%s", suggestion)
@@ -325,7 +325,7 @@ func (cmd *Command) run(ctx context.Context, osArgs []string) (_ context.Context
 					if cmd.OnUsageError != nil {
 						err = cmd.OnUsageError(ctx, cmd, err, cmd.parent != nil)
 					} else {
-						fmt.Fprintf(cmd.Root().ErrWriter, "Incorrect Usage: %s\n\n", err.Error())
+						fmt.Fprintf(cmd.Root().ErrWriter, "%s\n\n", cmd.usageErrorText(err))
 						if cmd.parent == nil {
 							_ = ShowRootCommandHelp(cmd)
 						} else {
@@ -418,7 +418,7 @@ func (cmd *Command) handleRequiredError(ctx context.Context, err error) (context
 	if cmd.OnUsageError != nil {
 		err = cmd.OnUsageError(ctx, cmd, err, cmd.parent != nil)
 	} else {
-		fmt.Fprintf(cmd.Root().ErrWriter, "Incorrect Usage: %s\n\n", err.Error())
+		fmt.Fprintf(cmd.Root().ErrWriter, "%s\n\n", cmd.usageErrorText(err))
 		if cmd.parent == nil {
 			_ = ShowRootCommandHelp(cmd)
 		} else if helpErr := ShowCommandHelp(ctx, cmd.parent, cmd.Name); helpErr != nil {
@@ -445,7 +445,10 @@ func printDeprecationWarnings(cmdChain []*Command) {
 	warned := map[Flag]struct{}{}
 	for _, cmd := range cmdChain {
 		if cmd.Deprecated != "" {
-			fmt.Fprintf(w, "Command %q is deprecated, %s\n", cmd.Name, cmd.Deprecated)
+			fmt.Fprintf(w, "%s\n", cmd.Message("warning.command_deprecated", MessageArgs{
+				Command: cmd.Name,
+				Value:   cmd.Deprecated,
+			}))
 		}
 		for _, fl := range cmd.appliedFlags {
 			if _, inSet := cmd.setFlags[fl]; !inSet {
@@ -457,7 +460,10 @@ func printDeprecationWarnings(cmdChain []*Command) {
 			if df, ok := fl.(DeprecatedFlag); ok && df.GetDeprecated() != "" {
 				warned[fl] = struct{}{}
 				name := fl.Names()[0]
-				fmt.Fprintf(w, "Flag %s%s has been deprecated, %s\n", prefixFor(name), name, df.GetDeprecated())
+				fmt.Fprintf(w, "%s\n", cmd.Message("warning.flag_deprecated", MessageArgs{
+					Flag:  prefixFor(name) + name,
+					Value: df.GetDeprecated(),
+				}))
 			}
 		}
 	}

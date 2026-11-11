@@ -139,7 +139,7 @@ func (a *ArgumentBase[T, C, VC]) Parse(s []string) ([]string, error) {
 	tracef("attempting arg%[1] parse", &a.Name)
 	if len(s) > 0 {
 		if err := value.Set(s[0]); err != nil {
-			return s, fmt.Errorf("invalid value %q for argument %s: %v", s[0], a.Name, err)
+			return s, &errInvalidArgValue{value: s[0], arg: a.Name, err: err}
 		}
 		*a.value = value.Get().(T)
 		tracef("set arg%[1] one value", a.Name, *a.value)
@@ -216,7 +216,7 @@ func (a *ArgumentsBase[T, C, VC]) Parse(s []string) ([]string, error) {
 	tracef("attempting arg%[1] parse", &a.Name)
 	for _, arg := range s {
 		if err := value.Set(arg); err != nil {
-			return s, fmt.Errorf("invalid value %q for argument %s: %v", arg, a.Name, err)
+			return s, &errInvalidArgValue{value: arg, arg: a.Name, err: err}
 		}
 		tracef("set arg%[1] one value", &a.Name, value.Get().(T))
 		a.values = append(a.values, value.Get().(T))
@@ -226,7 +226,7 @@ func (a *ArgumentsBase[T, C, VC]) Parse(s []string) ([]string, error) {
 		}
 	}
 	if count < a.Min {
-		return s, fmt.Errorf("sufficient count of arg %s not provided, given %d expected %d", a.Name, count, a.Min)
+		return s, &errArgsCount{arg: a.Name, count: count, expected: a.Min}
 	}
 
 	if a.Destination != nil {
