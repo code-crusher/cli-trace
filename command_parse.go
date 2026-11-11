@@ -75,7 +75,10 @@ func (cmd *Command) parseFlags(args Args) (Args, error) {
 	tracef("parsing flags iteratively tail=%[1]q (cmd=%[2]q)", args.Tail(), cmd.Name)
 	defer tracef("done parsing flags (cmd=%[1]q)", cmd.Name)
 
+	cmd.unknownFlags = nil
+
 	posArgs := []string{}
+nextArg:
 	for rargs := args.Slice(); len(rargs) > 0; rargs = rargs[1:] {
 		tracef("rearrange:1 (cmd=%[1]q) %[2]q", cmd.Name, rargs)
 
@@ -210,6 +213,16 @@ func (cmd *Command) parseFlags(args Args) (Args, error) {
 				posArgs = append(posArgs, rargs...)
 				return &stringSliceArgs{posArgs}, nil
 			}
+			// Collect the unknown flag and keep parsing, so that known flags
+			// can still be interspersed with unknown ones (#2109). The token
+			// is passed through as is; a following value is handled by the
+			// next iteration as a positional argument.
+			if cmd.IgnoreUnknownFlags {
+				tracef("collecting unknown flag %[1]q (cmd=%[2]q)", firstArg, cmd.Name)
+				cmd.unknownFlags = append(cmd.unknownFlags, firstArg)
+				posArgs = append(posArgs, rargs[0])
+				continue
+			}
 			return &stringSliceArgs{posArgs}, fmt.Errorf("%s%s", providedButNotDefinedErrMsg, flagName)
 		}
 
@@ -221,6 +234,9 @@ func (cmd *Command) parseFlags(args Args) (Args, error) {
 		// every flag of the group has to exist before any of them is set,
 		// otherwise a group holding an unknown flag is reported by whichever
 		// of its flags happens to be examined first
+		//
+		// A group may also hold "=value" after its last flag; flagName does
+		// not include it, valFromEqual/flagVal do.
 		for index, c := range flagName {
 			if sf := cmd.lookupAppliedFlag(string(c)); sf == nil {
 				if index == 0 && cmd.DefaultCommand != "" {
@@ -232,6 +248,30 @@ func (cmd *Command) parseFlags(args Args) (Args, error) {
 				if cmd.Root().shellCompletion {
 					posArgs = append(posArgs, rargs...)
 					return &stringSliceArgs{posArgs}, nil
+				}
+				// Collect the unknown part of the group and keep parsing, so
+				// that known flags can still be interspersed with unknown
+				// ones (#2109). The leading flags of the group are all bool
+				// flags: a non-bool one would have been reported as needing
+				// an argument further below, unknown or not. Any "=value"
+				// stays with the unknown part, just as it would stay with a
+				// known last flag.
+				if cmd.IgnoreUnknownFlags {
+					for _, c2 := range flagName[:index] {
+						if err := cmd.set(string(c2), cmd.lookupAppliedFlag(string(c2)), "true"); err != nil {
+							return &stringSliceArgs{posArgs}, err
+						}
+					}
+					// flagName was cut at "=" and holds no "=value", so the
+					// token is rebuilt from firstArg to keep any "=value"
+					// with the unknown part of the group. The unknown part
+					// starts where the index-th flag of the group starts.
+					unknownPrefix := string([]rune(flagName)[:index])
+					unknown := firstArg[:numMinuses] + firstArg[numMinuses+len(unknownPrefix):]
+					tracef("collecting unknown flag %[1]q (cmd=%[2]q)", unknown, cmd.Name)
+					cmd.unknownFlags = append(cmd.unknownFlags, unknown)
+					posArgs = append(posArgs, unknown)
+					continue nextArg
 				}
 				return &stringSliceArgs{posArgs}, fmt.Errorf("%s%s", providedButNotDefinedErrMsg, flagName)
 			}

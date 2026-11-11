@@ -276,6 +276,255 @@ func TestParseAndRunShortOpts(t *testing.T) {
 	}
 }
 
+func TestCommandIgnoreUnknownFlags(t *testing.T) {
+	RunIgnoreUnknownFlags(t, false)
+}
+
+func TestCommandIgnoreUnknownFlagsShortOptionHandling(t *testing.T) {
+	RunIgnoreUnknownFlags(t, true)
+}
+
+// RunIgnoreUnknownFlags tests the IgnoreUnknownFlags behavior requested in
+// issue #2109: unknown flags must not fail parsing, must be collected as
+// positional arguments so they can be passed through to another program, and
+// known flags interspersed with them must still be parsed normally.
+func RunIgnoreUnknownFlags(t *testing.T, useShortOptionHandling bool) {
+	t.Helper()
+
+	type expectations struct {
+		expectedArgs    []string
+		expectedFlags   map[string]any
+		expectedUnknown []string
+	}
+
+	testCases := []struct {
+		name     string
+		testArgs []string
+		normal   expectations
+		// short holds the expectations that differ when short-option
+		// handling is enabled; when empty, normal is used
+		short expectations
+	}{
+		{
+			name:     "no unknown flags",
+			testArgs: []string{"test", "-a", "arg1"},
+			normal: expectations{
+				expectedArgs:  []string{"arg1"},
+				expectedFlags: map[string]any{"abc": true},
+			},
+		},
+		{
+			name:     "unknown bool-like flag with value",
+			testArgs: []string{"test", "-a", "--custom", "v"},
+			normal: expectations{
+				expectedArgs:    []string{"--custom", "v"},
+				expectedFlags:   map[string]any{"abc": true},
+				expectedUnknown: []string{"--custom"},
+			},
+		},
+		{
+			name:     "unknown flag with =value",
+			testArgs: []string{"test", "--custom=1", "-a"},
+			normal: expectations{
+				expectedArgs:    []string{"--custom=1"},
+				expectedFlags:   map[string]any{"abc": true},
+				expectedUnknown: []string{"--custom=1"},
+			},
+		},
+		{
+			name:     "unknown flags interspersed with known and args",
+			testArgs: []string{"test", "--u1", "-a", "arg1", "--u2=v", "arg2"},
+			normal: expectations{
+				expectedArgs:    []string{"--u1", "arg1", "--u2=v", "arg2"},
+				expectedFlags:   map[string]any{"abc": true},
+				expectedUnknown: []string{"--u1", "--u2=v"},
+			},
+		},
+		{
+			name:     "unknown value flag takes following arg",
+			testArgs: []string{"test", "-i", "ival", "--u1", "uval", "arg1"},
+			normal: expectations{
+				expectedArgs:    []string{"--u1", "uval", "arg1"},
+				expectedFlags:   map[string]any{"ijk": "ival"},
+				expectedUnknown: []string{"--u1"},
+			},
+		},
+		{
+			name:     "unknown flag group",
+			testArgs: []string{"test", "-ax", "arg1"},
+			normal: expectations{
+				// without short-option handling "-ax" is a single flag
+				// named "ax", which is unknown as a whole
+				expectedArgs:    []string{"-ax", "arg1"},
+				expectedUnknown: []string{"-ax"},
+			},
+			short: expectations{
+				// with short-option handling the known leading flag of the
+				// group is set and only the unknown tail is collected
+				expectedArgs:    []string{"-x", "arg1"},
+				expectedFlags:   map[string]any{"abc": true},
+				expectedUnknown: []string{"-x"},
+			},
+		},
+		{
+			name:     "unknown flag group with =value",
+			testArgs: []string{"test", "-ax=1", "arg1"},
+			normal: expectations{
+				expectedArgs:    []string{"-ax=1", "arg1"},
+				expectedUnknown: []string{"-ax=1"},
+			},
+			short: expectations{
+				// the "=value" stays with the unknown tail of the group
+				expectedArgs:    []string{"-x=1", "arg1"},
+				expectedFlags:   map[string]any{"abc": true},
+				expectedUnknown: []string{"-x=1"},
+			},
+		},
+		{
+			name:     "double dash still stops parsing",
+			testArgs: []string{"test", "-a", "--", "--custom"},
+			normal: expectations{
+				expectedArgs:  []string{"--custom"},
+				expectedFlags: map[string]any{"abc": true},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			state := map[string]Args{"args": nil}
+
+			cmd := &Command{
+				Name:        "test",
+				Usage:       "this is for testing",
+				Description: "testing",
+				Action: func(_ context.Context, cmd *Command) error {
+					state["args"] = cmd.Args()
+					return nil
+				},
+				IgnoreUnknownFlags:     true,
+				UseShortOptionHandling: useShortOptionHandling,
+				Writer:                 io.Discard,
+				Flags: []Flag{
+					&BoolFlag{Name: "abc", Aliases: []string{"a"}},
+					&StringFlag{Name: "ijk", Aliases: []string{"i"}},
+				},
+			}
+
+			err := cmd.Run(buildTestContext(t), tc.testArgs)
+
+			r := require.New(t)
+			r.NoError(err)
+
+			exp := tc.normal
+			if useShortOptionHandling && tc.short.expectedArgs != nil {
+				exp = tc.short
+			}
+
+			if state["args"] != nil {
+				r.Equal(exp.expectedArgs, state["args"].Slice())
+			}
+			if len(exp.expectedUnknown) > 0 {
+				r.Equal(exp.expectedUnknown, cmd.UnknownFlags())
+			} else {
+				r.Empty(cmd.UnknownFlags())
+			}
+
+			for name, expected := range exp.expectedFlags {
+				switch e := expected.(type) {
+				case bool:
+					r.Equal(e, cmd.Bool(name))
+				case string:
+					r.Equal(e, cmd.String(name))
+				}
+			}
+		})
+	}
+}
+
+func TestCommandIgnoreUnknownFlagsSubcommand(t *testing.T) {
+	// issue #2109: a subcommand must be able to opt into collecting unknown
+	// flags without the root command doing so
+	state := map[string]Args{"args": nil}
+	var subUnknown []string
+
+	cmd := &Command{
+		Name: "app",
+		Commands: []*Command{
+			{
+				Name: "wrapper",
+				Flags: []Flag{
+					&StringFlag{Name: "name", Aliases: []string{"n"}},
+				},
+				IgnoreUnknownFlags: true,
+				Action: func(_ context.Context, cmd *Command) error {
+					state["args"] = cmd.Args()
+					subUnknown = cmd.UnknownFlags()
+					return nil
+				},
+			},
+		},
+		Writer: io.Discard,
+	}
+
+	r := require.New(t)
+
+	r.NoError(cmd.Run(buildTestContext(t), []string{"app", "wrapper", "-n", "x", "--custom", "y"}))
+	r.Equal([]string{"--custom", "y"}, state["args"].Slice())
+	r.Equal([]string{"--custom"}, subUnknown)
+}
+
+func TestCommandIgnoreUnknownFlagsDefaultCommandStillPassesThrough(t *testing.T) {
+	// #2249 behavior must be kept when IgnoreUnknownFlags is set as well:
+	// with a DefaultCommand, unknown flags are passed through to the default
+	// subcommand; whether they are accepted is up to that subcommand, so the
+	// subcommand opts into collecting them
+	state := map[string]Args{"args": nil}
+	var subUnknown []string
+
+	cmd := &Command{
+		Name:           "app",
+		DefaultCommand: "run",
+		Writer:         io.Discard,
+		Commands: []*Command{
+			{
+				Name:               "run",
+				IgnoreUnknownFlags: true,
+				Action: func(_ context.Context, cmd *Command) error {
+					state["args"] = cmd.Args()
+					subUnknown = cmd.UnknownFlags()
+					return nil
+				},
+			},
+		},
+	}
+
+	r := require.New(t)
+
+	r.NoError(cmd.Run(buildTestContext(t), []string{"app", "-x", "foo"}))
+	r.Equal([]string{"-x", "foo"}, state["args"].Slice())
+	r.Equal([]string{"-x"}, subUnknown)
+
+	// without IgnoreUnknownFlags on the default subcommand, the passthrough
+	// token is still rejected by the subcommand that parses it
+	cmd2 := &Command{
+		Name:           "app",
+		DefaultCommand: "run",
+		Writer:         io.Discard,
+		ErrWriter:      io.Discard,
+		Commands: []*Command{
+			{
+				Name: "run",
+				Action: func(_ context.Context, cmd *Command) error {
+					return nil
+				},
+			},
+		},
+	}
+	r.ErrorContains(cmd2.Run(buildTestContext(t), []string{"app", "-x", "foo"}),
+		"flag provided but not defined: -x")
+}
+
 func TestCommand_Run_DoesNotOverwriteErrorFromBefore(t *testing.T) {
 	cmd := &Command{
 		Name: "bar",
@@ -6809,6 +7058,7 @@ func TestJSONExportCommand(t *testing.T) {
 				"suggest": false,
 				"allowExtFlags": false,
 				"skipFlagParsing": false,
+				"ignoreUnknownFlags": false,
 				"prefixMatchCommands": false,
 				"mutuallyExclusiveFlags": null,
 				"arguments": null,
@@ -6876,6 +7126,7 @@ func TestJSONExportCommand(t *testing.T) {
 			"suggest": false,
 			"allowExtFlags": false,
 			"skipFlagParsing": false,
+			"ignoreUnknownFlags": false,
 			"prefixMatchCommands": false,
 			"mutuallyExclusiveFlags": null,
 			"arguments": null,
@@ -6912,6 +7163,7 @@ func TestJSONExportCommand(t *testing.T) {
 			"suggest": false,
 			"allowExtFlags": false,
 			"skipFlagParsing": false,
+			"ignoreUnknownFlags": false,
 			"prefixMatchCommands": false,
 			"mutuallyExclusiveFlags": null,
 			"arguments": null,
@@ -6945,6 +7197,7 @@ func TestJSONExportCommand(t *testing.T) {
 			"suggest": false,
 			"allowExtFlags": false,
 			"skipFlagParsing": false,
+			"ignoreUnknownFlags": false,
 			"prefixMatchCommands": false,
 			"mutuallyExclusiveFlags": null,
 			"arguments": null,
@@ -6998,6 +7251,7 @@ func TestJSONExportCommand(t *testing.T) {
 			"suggest": false,
 			"allowExtFlags": false,
 			"skipFlagParsing": false,
+			"ignoreUnknownFlags": false,
 			"prefixMatchCommands": false,
 			"mutuallyExclusiveFlags": null,
 			"arguments": null,
@@ -7068,6 +7322,7 @@ func TestJSONExportCommand(t *testing.T) {
 				"suggest": false,
 				"allowExtFlags": false,
 				"skipFlagParsing": false,
+				"ignoreUnknownFlags": false,
 				"prefixMatchCommands": false,
 				"mutuallyExclusiveFlags": null,
 				"arguments": null,
@@ -7135,6 +7390,7 @@ func TestJSONExportCommand(t *testing.T) {
 			"suggest": false,
 			"allowExtFlags": false,
 			"skipFlagParsing": false,
+			"ignoreUnknownFlags": false,
 			"prefixMatchCommands": false,
 			"mutuallyExclusiveFlags": null,
 			"arguments": null,
@@ -7248,6 +7504,7 @@ func TestJSONExportCommand(t *testing.T) {
 		"suggest": false,
 		"allowExtFlags": false,
 		"skipFlagParsing": false,
+		"ignoreUnknownFlags": false,
 		"prefixMatchCommands": false,
 		"mutuallyExclusiveFlags": null,
 		"arguments": [

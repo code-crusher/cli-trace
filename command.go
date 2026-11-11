@@ -133,6 +133,13 @@ type Command struct {
 	AllowExtFlags bool `json:"allowExtFlags"`
 	// Treat all flags as normal arguments if true
 	SkipFlagParsing bool `json:"skipFlagParsing"`
+	// IgnoreUnknownFlags, when true, does not error out when an unknown flag
+	// is encountered during parsing. Instead, the unknown flag and, if
+	// applicable, its value are collected as positional arguments, so a
+	// wrapper command can pass them through to another program
+	// (see issue #2109). The unknown flag tokens are also available via
+	// UnknownFlags().
+	IgnoreUnknownFlags bool `json:"ignoreUnknownFlags"`
 	// CustomHelpTemplate the text template for the command help topic.
 	// cli.go uses text/template to render templates. You can
 	// render custom help text by setting this variable.
@@ -170,6 +177,9 @@ type Command struct {
 	parent *Command
 	// parsed args
 	parsedArgs Args
+	// unknown flags collected while parsing, when IgnoreUnknownFlags is
+	// enabled; populated by parseFlags
+	unknownFlags []string
 	// track state of error handling
 	isInError bool
 	// track state of defaults
@@ -760,6 +770,15 @@ func (cmd *Command) Value(name string) any {
 // be retrieved via the command.{Type}Arg(name) functions instead.
 func (cmd *Command) Args() Args {
 	return cmd.parsedArgs
+}
+
+// UnknownFlags returns the flags that were not recognized during parsing,
+// with their leading dashes preserved, e.g. "--custom-flag". A flag with
+// its value is returned as a single token, e.g. "--custom-flag=v".
+// It is non-empty only when IgnoreUnknownFlags is enabled and such flags
+// were passed; it is reset on every run of the command.
+func (cmd *Command) UnknownFlags() []string {
+	return cmd.unknownFlags
 }
 
 // NArg returns the number of the command line arguments.
