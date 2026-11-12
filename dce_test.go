@@ -33,3 +33,42 @@ func TestNoTemplateTagDCE(t *testing.T) {
 
 	assert.Zero(t, reflectMethodSymbols(t, "urfave_cli_no_template"))
 }
+
+// completionSymbols builds examples/example-cli with the given tags, and
+// returns the number of reachable symbols that implement shell completion:
+// the completion machinery, the embedded shell scripts, and fish completion.
+func completionSymbols(t *testing.T, tags string) int {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "example-cli")
+	cmd := exec.Command("go", "build", "-tags", tags, "-o", out, "./examples/example-cli")
+	built, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(built))
+
+	nm := exec.Command("go", "tool", "nm", out)
+	syms, err := nm.CombinedOutput()
+	require.NoError(t, err, string(syms))
+
+	count := 0
+	for _, sym := range []string{
+		"cli/v3.DefaultCompleteWithFlags",
+		"cli/v3.buildCompletionCommand",
+		"cli/v3.autoCompleteFS",
+		"cli/v3.checkShellCompleteFlag",
+		"cli/v3.(*Command).ToFishCompletion",
+	} {
+		count += strings.Count(string(syms), sym)
+	}
+	return count
+}
+
+// EnableShellCompletion is a runtime option, so without a build tag the
+// completion code is reachable and stays in the binary even when completion
+// is left disabled (#2291). Make sure the urfave_cli_no_completion tag
+// removes it, alone and combined with urfave_cli_no_template.
+func TestNoCompletionTagDCE(t *testing.T) {
+	// Sanity check: without the tag, the completion code is linked in.
+	assert.NotZero(t, completionSymbols(t, ""))
+
+	assert.Zero(t, completionSymbols(t, "urfave_cli_no_completion"))
+	assert.Zero(t, completionSymbols(t, "urfave_cli_no_template,urfave_cli_no_completion"))
+}

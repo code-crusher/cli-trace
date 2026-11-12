@@ -460,6 +460,17 @@ func checkBinarySizeActionFunc(ctx context.Context, cmd *cli.Command) (err error
 		return err
 	}
 
+	// Also get the size with urfave_cli_no_completion build tag,
+	// for informational purposes.
+	noComplTags := "urfave_cli_no_completion"
+	if tags != "" {
+		noComplTags = tags + "," + noComplTags
+	}
+	noComplSizeDiff, err := getCLISize(ctx, noComplTags)
+	if err != nil {
+		return err
+	}
+
 	roundedFileSize := roundToMB(cliSizeDiff)
 	roundedFileSizeString := roundToMBString(cliSizeDiff)
 
@@ -472,6 +483,7 @@ func checkBinarySizeActionFunc(ctx context.Context, cmd *cli.Command) (err error
 	// show guidance
 	fmt.Printf("\n%s is the current binary size\n", roundedFileSizeString)
 	fmt.Printf("%s is the current binary size with urfave_cli_no_template build tag\n", roundToMBString(noTmplSizeDiff))
+	fmt.Printf("%s is the current binary size with urfave_cli_no_completion build tag\n", roundToMBString(noComplSizeDiff))
 	// show guidance for min size
 	if isLessThanDesiredMin {
 		fmt.Printf("  %s %s is the target min size\n", goodNewsEmoji, desiredMinSizeString)

@@ -175,14 +175,33 @@ go build -tags urfave_cli_no_template -o myapp ./cmd/myapp
 Note that help templates can not be customized with this tag; see
 [README](https://github.com/urfave/cli#urfave_cli_no_template) for details.
 
+### `urfave_cli_no_completion`
+
+`EnableShellCompletion` is a runtime option, so it cannot remove the
+completion code from the binary: with completion left disabled, the hidden
+`completion` command, the embedded shell scripts, and the flag-completion
+machinery are still reachable and linked in (#2291). Measured on a minimal
+example, enabling `EnableShellCompletion` does not change the binary size
+at all — the code is always included.
+
+With the `urfave_cli_no_completion` build tag this code is excluded at
+compile time:
+
+```sh-session
+go build -tags urfave_cli_no_completion -o myapp ./cmd/myapp
+```
+
+Applications built with this tag must not configure completion: setting
+`EnableShellCompletion`, `ShellComplete`, or `ConfigureShellCompletionCommand`
+panics at startup with a clear error, since the completion scripts would
+otherwise call the binary and get nothing. The tag can be combined with
+`urfave_cli_no_template`, which is what an application that needs neither
+help templates nor completion should use.
+
 ### Other tags
 
 The v3 module does not currently define build tags such as
-`urfave_cli_no_docs`, `urfave_cli_no_completion`, or `urfave_cli_minimal`.
+`urfave_cli_no_docs` or `urfave_cli_minimal`.
 Documentation generation lives outside the core module in
 [`urfave/cli-docs`](https://github.com/urfave/cli-docs), so applications that
 only import `github.com/urfave/cli/v3` do not pull in that package.
-
-Shell completion support is part of the core package. Leave
-`EnableShellCompletion` disabled unless the application needs shell completion,
-then measure the result with the commands above.

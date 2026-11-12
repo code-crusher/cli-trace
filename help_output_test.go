@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -118,7 +117,9 @@ func buildHelpOutputTestCommand() *Command {
 				},
 			},
 		},
-		EnableShellCompletion: true,
+	}
+	if completionSupported {
+		cmd.EnableShellCompletion = true
 	}
 	return cmd
 }
@@ -151,9 +152,11 @@ func buildHelpOutputArgsUsageCommand() *Command {
 
 // TestHelpOutput checks the output of help and fish completion against
 // a golden file. It is run both with and without urfave_cli_no_template
-// build tag, making sure both produce the exact same output.
+// build tag, making sure both produce the exact same output. It is also
+// run with urfave_cli_no_completion, in which case there is no fish
+// completion and the golden file's fish section is skipped.
 //
-// To regenerate the golden file, run with UPDATE_GOLDEN=1 (without the tag).
+// To regenerate the golden file, run with UPDATE_GOLDEN=1 (without the tags).
 func TestHelpOutput(t *testing.T) {
 	type testCase struct {
 		name string
@@ -210,12 +213,5 @@ func TestHelpOutput(t *testing.T) {
 		})
 	}
 
-	fish, err := buildHelpOutputTestCommand().ToFishCompletion()
-	require.NoError(t, err)
-	got.WriteString("=== fish completion\n" + fish)
-
-	if os.Getenv("UPDATE_GOLDEN") != "" {
-		require.NoError(t, os.WriteFile(helpOutputFile, []byte(got.String()), 0o644))
-	}
-	expectFileContent(t, helpOutputFile, got.String())
+	checkHelpOutput(t, &got)
 }

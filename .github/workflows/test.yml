@@ -42,6 +42,8 @@ jobs:
 
       - run: make vet
       - run: make test GFLAGS='--tags urfave_cli_no_template'
+      - run: make test GFLAGS='--tags urfave_cli_no_completion'
+      - run: make test GFLAGS='--tags urfave_cli_no_template,urfave_cli_no_completion'
       - run: make test
       - run: make check-binary-size
 

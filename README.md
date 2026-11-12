@@ -49,6 +49,19 @@ Replacing `cli.HelpPrinter` works as usual, except it receives `"root"`,
 `"command"` or `"subcommand"` as `templ` instead of the default template text
 (a custom template is passed as is).
 
+### `urfave_cli_no_completion`
+
+When set, shell completion support is not compiled in at all: the hidden
+`completion` command, the embedded shell scripts, and the flag-completion
+machinery are excluded from the binary. `EnableShellCompletion` is a runtime
+option and cannot do this — with it left disabled, the completion code is
+still linked in (see [#2291] and
+[Binary Size](https://cli.urfave.org/v3/binary-size/#urfave_cli_no_completion)).
+
+Applications built with this tag must not configure completion: setting
+`EnableShellCompletion`, `ShellComplete`, or `ConfigureShellCompletionCommand`
+panics at startup. The tag can be combined with `urfave_cli_no_template`.
+
 ## Support
 
 Check the [Q&A discussions]. If you don't find answer to your question, [create
@@ -75,3 +88,4 @@ See [`LICENSE`](./LICENSE).
 [urfave/cli-docs]: https://github.com/urfave/cli-docs
 [urfave/cli-altsrc]: https://github.com/urfave/cli-altsrc
 [create a new issue]: https://github.com/urfave/cli/issues/new/choose
+[#2291]: https://github.com/urfave/cli/issues/2291
