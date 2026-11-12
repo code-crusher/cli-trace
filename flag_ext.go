@@ -104,6 +104,14 @@ func (e *extFlag) GetUsage() string {
 	return e.f.Usage
 }
 
+// NamesWithPlaceholder returns the flag's prefixed name and value
+// placeholder, as shown in the first help output column, e.g. "-v value".
+// See [FlagBase.NamesWithPlaceholder].
+func (e *extFlag) NamesWithPlaceholder() string {
+	pn, _ := flagNamesAndPlaceholder(e)
+	return pn
+}
+
 func (e *extFlag) GetValue() string {
 	return e.f.Value.String()
 }

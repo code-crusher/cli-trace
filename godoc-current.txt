@@ -416,6 +416,11 @@ func (bif *BoolWithInverseFlag) IsVisible() bool
 
 func (bif *BoolWithInverseFlag) Names() []string
 
+func (bif *BoolWithInverseFlag) NamesWithPlaceholder() string
+    NamesWithPlaceholder returns the flag's prefixed names, as shown in the
+    first help output column. For a BoolWithInverseFlag this is the inverse
+    pair, e.g. "--[no-]env, -e"; bool flags take no value placeholder.
+
 func (bif *BoolWithInverseFlag) PostParse() error
 
 func (bif *BoolWithInverseFlag) PreParse() error
@@ -1101,6 +1106,17 @@ func (f *FlagBase[T, C, V]) IsVisible() bool
 
 func (f *FlagBase[T, C, V]) Names() []string
     Names returns the names of the flag
+
+func (f *FlagBase[T, C, V]) NamesWithPlaceholder() string
+    NamesWithPlaceholder returns the flag's prefixed names and value
+    placeholder, as shown in the first help output column, e.g. "--lang value,
+    -l value". Unlike [Names], which returns the bare names, the result is ready
+    to be rendered as help output.
+
+    Custom help templates can use it with [Flag.GetUsage] to render the flag's
+    two help columns separately. Note that a custom Flag implementation must
+    embed one of the built-in flag types or provide this method itself for such
+    a template to work.
 
 func (f *FlagBase[T, C, V]) PostParse() error
     PostParse populates the flag given the flag set and environment

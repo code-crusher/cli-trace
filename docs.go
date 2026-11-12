@@ -86,13 +86,36 @@ func formatDefault(format string) string {
 	return " (default: " + format + ")"
 }
 
+// stringifyFlag renders a flag as the help output's two tab-delimited
+// columns: the prefixed names, e.g. "--lang value, -l value", and the usage
+// line including default value and environment variable hints.
 func stringifyFlag(f Flag) string {
 	// enforce DocGeneration interface on flags to avoid reflection
 	df, ok := f.(DocGenerationFlag)
 	if !ok {
 		return ""
 	}
-	placeholder, usage := unquoteUsage(df.GetUsage())
+	nameColumn, usageColumn := stringifyFlagColumnsDF(f, df)
+	return FlagEnvHinter(df.GetEnvVars(), fmt.Sprintf("%s\t%s", nameColumn, usageColumn))
+}
+
+// flagNamesAndPlaceholder computes the first help column of flag f: its
+// prefixed names and the value placeholder, if any. It returns false if f
+// does not implement [DocGenerationFlag], i.e. is not a flag whose help
+// output can be generated.
+func flagNamesAndPlaceholder(f Flag) (string, bool) {
+	// enforce DocGeneration interface on flags to avoid reflection
+	df, ok := f.(DocGenerationFlag)
+	if !ok {
+		return "", false
+	}
+	return flagNamesAndPlaceholderDF(f, df), true
+}
+
+// flagNamesAndPlaceholderDF is flagNamesAndPlaceholder with the flag's
+// DocGenerationFlag interface already asserted by the caller.
+func flagNamesAndPlaceholderDF(f Flag, df DocGenerationFlag) string {
+	placeholder, _ := unquoteUsage(df.GetUsage())
 	needsPlaceholder := df.TakesValue()
 	// if needsPlaceholder is true, placeholder is empty
 	if needsPlaceholder && placeholder == "" {
@@ -103,6 +126,38 @@ func stringifyFlag(f Flag) string {
 			placeholder = defaultPlaceholder
 		}
 	}
+
+	pn := FlagNamePrefixer(f.Names(), placeholder)
+	sliceFlag, ok := f.(DocGenerationMultiValueFlag)
+	if ok && sliceFlag.IsMultiValueFlag() {
+		pn = pn + " [ " + pn + " ]"
+	}
+
+	return pn
+}
+
+// stringifyFlagColumns splits the help output of flag f into its two
+// tab-delimited columns. The first is the prefixed flag names and value
+// placeholder, computed by [flagNamesAndPlaceholder]. The second is the usage
+// line with the default value appended, e.g. "greeting to use (default:
+// hello)". The environment variable hint is not part of either column; it
+// is appended by [stringifyFlag].
+//
+// It returns ok=false if f does not implement [DocGenerationFlag].
+func stringifyFlagColumns(f Flag) (nameColumn, usageColumn string, ok bool) {
+	// enforce DocGeneration interface on flags to avoid reflection
+	df, ok := f.(DocGenerationFlag)
+	if !ok {
+		return "", "", false
+	}
+	nameColumn, usageColumn = stringifyFlagColumnsDF(f, df)
+	return nameColumn, usageColumn, true
+}
+
+// stringifyFlagColumnsDF is stringifyFlagColumns with the flag's
+// DocGenerationFlag interface already asserted by the caller.
+func stringifyFlagColumnsDF(f Flag, df DocGenerationFlag) (nameColumn, usageColumn string) {
+	_, usage := unquoteUsage(df.GetUsage())
 
 	defaultValueString := ""
 
@@ -117,13 +172,5 @@ func stringifyFlag(f Flag) string {
 		}
 	}
 
-	usageWithDefault := strings.TrimSpace(usage + defaultValueString)
-
-	pn := FlagNamePrefixer(f.Names(), placeholder)
-	sliceFlag, ok := f.(DocGenerationMultiValueFlag)
-	if ok && sliceFlag.IsMultiValueFlag() {
-		pn = pn + " [ " + pn + " ]"
-	}
-
-	return FlagEnvHinter(df.GetEnvVars(), fmt.Sprintf("%s\t%s", pn, usageWithDefault))
+	return flagNamesAndPlaceholderDF(f, df), strings.TrimSpace(usage + defaultValueString)
 }

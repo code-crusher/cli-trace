@@ -284,6 +284,25 @@ func (bif *BoolWithInverseFlag) GetUsage() string {
 	return bif.Usage
 }
 
+// NamesWithPlaceholder returns the flag's prefixed names, as shown in the
+// first help output column. For a BoolWithInverseFlag this is the inverse
+// pair, e.g. "--[no-]env, -e"; bool flags take no value placeholder.
+func (bif *BoolWithInverseFlag) NamesWithPlaceholder() string {
+	// Reconstruct the same names segment String builds, so a FlagStringer
+	// that returns tab-less output cannot bleed its remainder into the
+	// names column. See the guard comment in String.
+	prefix := prefixFor(bif.Name)
+	names := fmt.Sprintf("%s[%s]%s", prefix, bif.inversePrefix(), bif.Name)
+	if len(bif.Aliases) > 0 {
+		aliasParts := make([]string, len(bif.Aliases))
+		for i, alias := range bif.Aliases {
+			aliasParts[i] = prefixFor(alias) + alias
+		}
+		names += ", " + strings.Join(aliasParts, ", ")
+	}
+	return names
+}
+
 // GetEnvVars returns the env vars for this flag
 func (bif *BoolWithInverseFlag) GetEnvVars() []string {
 	return bif.Sources.EnvKeys()

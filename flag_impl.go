@@ -355,6 +355,20 @@ func (f *FlagBase[T, C, V]) GetUsage() string {
 	return f.Usage
 }
 
+// NamesWithPlaceholder returns the flag's prefixed names and value
+// placeholder, as shown in the first help output column, e.g.
+// "--lang value, -l value". Unlike [Names], which returns the bare names,
+// the result is ready to be rendered as help output.
+//
+// Custom help templates can use it with [Flag.GetUsage] to render the flag's
+// two help columns separately. Note that a custom [Flag] implementation
+// must embed one of the built-in flag types or provide this method itself
+// for such a template to work.
+func (f *FlagBase[T, C, V]) NamesWithPlaceholder() string {
+	pn, _ := flagNamesAndPlaceholder(f)
+	return pn
+}
+
 // GetEnvVars returns the env vars for this flag
 func (f *FlagBase[T, C, V]) GetEnvVars() []string {
 	return f.Sources.EnvKeys()
