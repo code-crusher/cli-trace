@@ -145,6 +145,10 @@ Surrounding whitespace, such as the newline at the end of a file, is dropped for
 number, duration and timestamp flags, so a value of only whitespace counts as empty. A
 string flag keeps it unless `StringConfig.TrimSpace` is set.
 
+A map value from a `MapSource`, such as a YAML mapping, is applied to map flags
+(e.g. `StringMapFlag`) as a whole, so nested `key: value` pairs in the source set
+the corresponding entries of the flag.
+
 #### Values from alternate input sources (YAML, TOML, and others)
 
 There is a separate package [altsrc](https://github.com/urfave/cli-altsrc) that adds support for getting flag values
