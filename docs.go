@@ -120,10 +120,6 @@ func stringifyFlag(f Flag) string {
 	usageWithDefault := strings.TrimSpace(usage + defaultValueString)
 
 	pn := FlagNamePrefixer(f.Names(), placeholder)
-	sliceFlag, ok := f.(DocGenerationMultiValueFlag)
-	if ok && sliceFlag.IsMultiValueFlag() {
-		pn = pn + " [ " + pn + " ]"
-	}
 
 	return FlagEnvHinter(df.GetEnvVars(), fmt.Sprintf("%s\t%s", pn, usageWithDefault))
 }
