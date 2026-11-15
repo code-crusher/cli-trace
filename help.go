@@ -524,11 +524,23 @@ func nindent(spaces int, v string) string {
 }
 
 func wrap(input string, offset int, wrapAt int) string {
+	// Flag help is a tab-separated "name\tdescription" string (see
+	// stringifyFlag). Wrapping the whole line would collapse the tab and break
+	// the tabwriter column alignment, leaving continuation lines indented
+	// under the flag name instead of the description. Keep the name in its own
+	// cell and wrap only the description, prefixing the continuation lines
+	// with a tab (an empty first cell) so the tabwriter aligns them with the
+	// description column.
+	if name, desc, ok := strings.Cut(input, "\t"); ok {
+		return name + "\t" + wrapWithPadding(desc, offset, wrapAt, "\t")
+	}
+	return wrapWithPadding(input, offset, wrapAt, strings.Repeat(" ", offset))
+}
+
+func wrapWithPadding(input string, offset int, wrapAt int, padding string) string {
 	var ss []string
 
 	lines := strings.Split(input, "\n")
-
-	padding := strings.Repeat(" ", offset)
 
 	for i, line := range lines {
 		if line == "" {

@@ -139,8 +139,8 @@ GLOBAL OPTIONS:
    --config FILE, -c FILE  config FILE
    --debug                 enable debug output
    --log string            log file
-      with a multi-line usage
-   --level int  some level (default: 3)
+                           with a multi-line usage
+   --level int             some level (default: 3)
 === help command: help create
 NAME:
    app create - create a thing
@@ -168,8 +168,8 @@ GLOBAL OPTIONS:
    --config FILE, -c FILE  config FILE
    --debug                 enable debug output
    --log string            log file
-      with a multi-line usage
-   --level int  some level (default: 3)
+                           with a multi-line usage
+   --level int             some level (default: 3)
 === command no categories: delete --help
 NAME:
    app delete - delete a thing
@@ -189,8 +189,8 @@ GLOBAL OPTIONS:
    --config FILE, -c FILE  config FILE
    --debug                 enable debug output
    --log string            log file
-      with a multi-line usage
-   --level int  some level (default: 3)
+                           with a multi-line usage
+   --level int             some level (default: 3)
 === command args usage: exec --help
 NAME:
    app exec - execute a thing
@@ -205,8 +205,8 @@ GLOBAL OPTIONS:
    --config FILE, -c FILE  config FILE
    --debug                 enable debug output
    --log string            log file
-      with a multi-line usage
-   --level int  some level (default: 3)
+                           with a multi-line usage
+   --level int             some level (default: 3)
 === command usage text: list --help
 NAME:
    app list - list things
@@ -223,8 +223,8 @@ GLOBAL OPTIONS:
    --config FILE, -c FILE  config FILE
    --debug                 enable debug output
    --log string            log file
-      with a multi-line usage
-   --level int  some level (default: 3)
+                           with a multi-line usage
+   --level int             some level (default: 3)
 === subcommand: config --help
 NAME:
    app config - manage configuration
@@ -244,8 +244,8 @@ GLOBAL OPTIONS:
    --config FILE, -c FILE  config FILE
    --debug                 enable debug output
    --log string            log file
-      with a multi-line usage
-   --level int  some level (default: 3)
+                           with a multi-line usage
+   --level int             some level (default: 3)
 === help subcommand: help config
 NAME:
    app config - manage configuration
@@ -265,8 +265,8 @@ GLOBAL OPTIONS:
    --config FILE, -c FILE  config FILE
    --debug                 enable debug output
    --log string            log file
-      with a multi-line usage
-   --level int  some level (default: 3)
+                           with a multi-line usage
+   --level int             some level (default: 3)
 === subcommand usage text and category: plugin --help
 NAME:
    app plugin - manage plugins
@@ -289,8 +289,8 @@ GLOBAL OPTIONS:
    --config FILE, -c FILE  config FILE
    --debug                 enable debug output
    --log string            log file
-      with a multi-line usage
-   --level int  some level (default: 3)
+                           with a multi-line usage
+   --level int             some level (default: 3)
 === sub-subcommand: config set --help
 NAME:
    app config set-a-very-long-name - set
@@ -307,8 +307,8 @@ GLOBAL OPTIONS:
    --config FILE, -c FILE  config FILE
    --debug                 enable debug output
    --log string            log file
-      with a multi-line usage
-   --level int  some level (default: 3)
+                           with a multi-line usage
+   --level int             some level (default: 3)
 === root wrapped: --help
 NAME:
    app - a test application
@@ -396,9 +396,8 @@ GLOBAL OPTIONS:
    --config FILE, -c FILE  config FILE
    --debug                 enable debug output
    --log string            log file
-      with a multi-line usage
-   --level int some level (default:
-      3)
+                           with a multi-line usage
+   --level int             some level (default: 3)
 === subcommand wrapped: config --help
 NAME:
    app config - manage
@@ -416,14 +415,11 @@ OPTIONS:
    --help, -h  show help
 
 GLOBAL OPTIONS:
-   --config FILE, -c FILE
-      config FILE
-   --debug enable debug
-      output
-   --log string  log file
-      with a multi-line usage
-   --level int some level
-      (default: 3)
+   --config FILE, -c FILE  config FILE
+   --debug                 enable debug output
+   --log string            log file
+                           with a multi-line usage
+   --level int             some level (default: 3)
 === minimal: 
 NAME:
    mini

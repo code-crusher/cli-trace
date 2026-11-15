@@ -1926,11 +1926,10 @@ DESCRIPTION:
       and an indented line
 
 GLOBAL OPTIONS:
-   --foo, -h here's a
-      really long help text
-      line, let's see where it
-      wraps. blah blah blah
-      and so on.
+   --foo, -h  here's a really long
+              help text line, let's
+              see where it wraps. blah
+              blah blah and so on.
 
 COPYRIGHT:
    Here's a sample copyright
@@ -2140,9 +2139,8 @@ USAGE:
    even more
 
 OPTIONS:
-   --test-f string my test
-      usage
-   --help, -h  show help
+   --test-f string  my test usage
+   --help, -h       show help
 `,
 		output.String(),
 	)
@@ -2456,6 +2454,18 @@ func TestCommandHelpSuggestHiddenCommand(t *testing.T) {
 
 func TestWrapLine(t *testing.T) {
 	assert.Equal(t, "    ", wrapLine("    ", 0, 3, " "))
+}
+
+func TestWrapFlag(t *testing.T) {
+	// Flag help is a tab-separated "name\tdescription" string. Wrapped
+	// continuation lines must start with a tab (an empty first cell) so the
+	// tabwriter aligns them with the description column, not under the name.
+	got := wrap("--listen string, --address string\taddress on which the router will be listening on", 0, 45)
+	assert.Equal(t, "--listen string, --address string\taddress on which the router will be listening\n\ton", got)
+
+	// Without a tab the behavior is unchanged: continuation lines are padded
+	// with spaces.
+	assert.Equal(t, "here's\n   a\n   sample", wrap("here's a sample", 3, 10))
 }
 
 func TestWrapLineCountsRunes(t *testing.T) {
