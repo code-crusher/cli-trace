@@ -6809,6 +6809,7 @@ func TestJSONExportCommand(t *testing.T) {
 				"suggest": false,
 				"allowExtFlags": false,
 				"skipFlagParsing": false,
+				"treatUnknownFlagsAsArgs": false,
 				"prefixMatchCommands": false,
 				"mutuallyExclusiveFlags": null,
 				"arguments": null,
@@ -6876,6 +6877,7 @@ func TestJSONExportCommand(t *testing.T) {
 			"suggest": false,
 			"allowExtFlags": false,
 			"skipFlagParsing": false,
+			"treatUnknownFlagsAsArgs": false,
 			"prefixMatchCommands": false,
 			"mutuallyExclusiveFlags": null,
 			"arguments": null,
@@ -6912,6 +6914,7 @@ func TestJSONExportCommand(t *testing.T) {
 			"suggest": false,
 			"allowExtFlags": false,
 			"skipFlagParsing": false,
+			"treatUnknownFlagsAsArgs": false,
 			"prefixMatchCommands": false,
 			"mutuallyExclusiveFlags": null,
 			"arguments": null,
@@ -6945,6 +6948,7 @@ func TestJSONExportCommand(t *testing.T) {
 			"suggest": false,
 			"allowExtFlags": false,
 			"skipFlagParsing": false,
+			"treatUnknownFlagsAsArgs": false,
 			"prefixMatchCommands": false,
 			"mutuallyExclusiveFlags": null,
 			"arguments": null,
@@ -6998,6 +7002,7 @@ func TestJSONExportCommand(t *testing.T) {
 			"suggest": false,
 			"allowExtFlags": false,
 			"skipFlagParsing": false,
+			"treatUnknownFlagsAsArgs": false,
 			"prefixMatchCommands": false,
 			"mutuallyExclusiveFlags": null,
 			"arguments": null,
@@ -7068,6 +7073,7 @@ func TestJSONExportCommand(t *testing.T) {
 				"suggest": false,
 				"allowExtFlags": false,
 				"skipFlagParsing": false,
+				"treatUnknownFlagsAsArgs": false,
 				"prefixMatchCommands": false,
 				"mutuallyExclusiveFlags": null,
 				"arguments": null,
@@ -7135,6 +7141,7 @@ func TestJSONExportCommand(t *testing.T) {
 			"suggest": false,
 			"allowExtFlags": false,
 			"skipFlagParsing": false,
+			"treatUnknownFlagsAsArgs": false,
 			"prefixMatchCommands": false,
 			"mutuallyExclusiveFlags": null,
 			"arguments": null,
@@ -7248,6 +7255,7 @@ func TestJSONExportCommand(t *testing.T) {
 		"suggest": false,
 		"allowExtFlags": false,
 		"skipFlagParsing": false,
+		"treatUnknownFlagsAsArgs": false,
 		"prefixMatchCommands": false,
 		"mutuallyExclusiveFlags": null,
 		"arguments": [
@@ -8332,4 +8340,111 @@ func TestCommand_RunAgainChecksRequiredFlagsAndSources(t *testing.T) {
 	t.Setenv("APP_NAME", "from-env")
 	r.NoError(cmd.Run(buildTestContext(t), []string{"app"}))
 	r.Equal("from-env", cmd.String("name"))
+}
+
+func TestCommandTreatUnknownFlagsAsArgs(t *testing.T) {
+	// Regression test for https://github.com/urfave/cli/issues/2240
+	// With TreatUnknownFlagsAsArgs set, an unknown flag is treated as a
+	// positional argument and flag parsing stops, giving the same effect
+	// as a "--" placed before the first unknown flag.
+	cases := []struct {
+		name     string
+		testArgs []string
+		wantArgs []string
+	}{
+		{
+			name:     "unknown after known flag",
+			testArgs: []string{"cmd", "--known", "--unknown"},
+			wantArgs: []string{"--unknown"},
+		},
+		{
+			name:     "known after unknown",
+			testArgs: []string{"cmd", "--unknown", "--known"},
+			wantArgs: []string{"--unknown", "--known"},
+		},
+		{
+			name:     "positional then unknown then known",
+			testArgs: []string{"cmd", "pos1", "--unknown", "--known"},
+			wantArgs: []string{"pos1", "--unknown", "--known"},
+		},
+		{
+			name:     "mixed known and positional",
+			testArgs: []string{"cmd", "--def", "v", "--known", "pos1", "--unknown", "pos2"},
+			wantArgs: []string{"pos1", "--unknown", "pos2"},
+		},
+		{
+			name:     "short option group with unknown flag",
+			testArgs: []string{"cmd", "-abc", "tail"},
+			wantArgs: []string{"-abc", "tail"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotArgs []string
+			cmd := &Command{
+				Writer:                  io.Discard,
+				TreatUnknownFlagsAsArgs: true,
+				Action: func(_ context.Context, cmd *Command) error {
+					gotArgs = cmd.Args().Slice()
+					return nil
+				},
+				Flags: []Flag{
+					&BoolFlag{Name: "known", Aliases: []string{"a"}},
+					&BoolFlag{Name: "b"},
+					&BoolFlag{Name: "c"},
+					&StringFlag{Name: "def"},
+				},
+			}
+
+			err := cmd.Run(buildTestContext(t), tc.testArgs)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantArgs, gotArgs)
+		})
+	}
+}
+
+func TestCommandTreatUnknownFlagsAsArgsMatchesDoubleDash(t *testing.T) {
+	// With TreatUnknownFlagsAsArgs set, `cmd --known --unknown` must behave
+	// exactly like `cmd --known -- --unknown`.
+	treat := &Command{
+		Writer:                  io.Discard,
+		TreatUnknownFlagsAsArgs: true,
+		Action: func(_ context.Context, cmd *Command) error {
+			return nil
+		},
+		Flags: []Flag{
+			&BoolFlag{Name: "known"},
+		},
+	}
+	dashDash := &Command{
+		Writer: io.Discard,
+		Action: func(_ context.Context, cmd *Command) error {
+			return nil
+		},
+		Flags: []Flag{
+			&BoolFlag{Name: "known"},
+		},
+	}
+
+	r := require.New(t)
+	r.NoError(treat.Run(buildTestContext(t), []string{"cmd", "--known", "--unknown"}))
+	r.NoError(dashDash.Run(buildTestContext(t), []string{"cmd", "--known", "--", "--unknown"}))
+	r.Equal(treat.parsedArgs.Slice(), dashDash.parsedArgs.Slice())
+}
+
+func TestCommandTreatUnknownFlagsAsArgsOff(t *testing.T) {
+	// The default behavior is unchanged: an unknown flag is an error.
+	cmd := &Command{
+		Writer: io.Discard,
+		Action: func(_ context.Context, cmd *Command) error {
+			return nil
+		},
+		Flags: []Flag{
+			&BoolFlag{Name: "known"},
+		},
+	}
+
+	err := cmd.Run(buildTestContext(t), []string{"cmd", "--known", "--unknown"})
+	require.EqualError(t, err, "flag provided but not defined: -unknown")
 }

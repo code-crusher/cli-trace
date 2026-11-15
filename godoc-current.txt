@@ -577,6 +577,13 @@ type Command struct {
 	AllowExtFlags bool `json:"allowExtFlags"`
 	// Treat all flags as normal arguments if true
 	SkipFlagParsing bool `json:"skipFlagParsing"`
+	// Treat unknown flags as normal arguments instead of returning a
+	// "flag provided but not defined" error. Flag parsing stops at the first
+	// unknown flag, which is treated as a positional argument along with all
+	// remaining arguments. This provides per-command behavior equivalent to
+	// placing "--" before the unknown flag without requiring the caller to
+	// add it on the command line.
+	TreatUnknownFlagsAsArgs bool `json:"treatUnknownFlagsAsArgs"`
 	// CustomHelpTemplate the text template for the command help topic.
 	// cli.go uses text/template to render templates. You can
 	// render custom help text by setting this variable.

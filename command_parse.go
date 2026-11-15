@@ -204,9 +204,12 @@ func (cmd *Command) parseFlags(args Args) (Args, error) {
 				posArgs = append(posArgs, rargs...)
 				return &stringSliceArgs{posArgs}, nil
 			}
-			// When DefaultCommand is set, pass unknown flags through as positional args
-			// so the default command can handle them (fixes #2249)
-			if cmd.DefaultCommand != "" {
+			// Pass unknown flags through as positional args when a default
+			// command needs to handle them (fixes #2249), or when unknown
+			// flags should be treated as args (fixes #2240). Flag parsing
+			// stops here, giving the same effect as a "--" before the first
+			// unknown flag.
+			if cmd.DefaultCommand != "" || cmd.TreatUnknownFlagsAsArgs {
 				posArgs = append(posArgs, rargs...)
 				return &stringSliceArgs{posArgs}, nil
 			}
@@ -224,6 +227,13 @@ func (cmd *Command) parseFlags(args Args) (Args, error) {
 		for index, c := range flagName {
 			if sf := cmd.lookupAppliedFlag(string(c)); sf == nil {
 				if index == 0 && cmd.DefaultCommand != "" {
+					posArgs = append(posArgs, rargs...)
+					return &stringSliceArgs{posArgs}, nil
+				}
+				// When TreatUnknownFlagsAsArgs is set, pass the unknown flag
+				// group through as positional args and stop flag parsing,
+				// giving the same effect as a "--" before it (fixes #2240)
+				if cmd.TreatUnknownFlagsAsArgs {
 					posArgs = append(posArgs, rargs...)
 					return &stringSliceArgs{posArgs}, nil
 				}
