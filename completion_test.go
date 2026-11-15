@@ -685,6 +685,74 @@ func TestCompletionSubcommandCustomShellComplete(t *testing.T) {
 	r.Equal("custom-index\n", out.String())
 }
 
+func TestCompletionMutuallyExclusiveFlags(t *testing.T) {
+	// Regression test for https://github.com/urfave/cli/issues/2209:
+	// once one flag of a mutually exclusive group is on the command line,
+	// none of the group's flags is suggested, since completing one would
+	// produce an "incorrect usage" error.
+
+	out := &bytes.Buffer{}
+
+	cmd := &Command{
+		EnableShellCompletion: true,
+		HideHelp:              true,
+		Writer:                out,
+		Commands: []*Command{
+			{Name: "plain", Flags: []Flag{&BoolFlag{Name: "b0"}}},
+			{
+				Name: "mutex",
+				MutuallyExclusiveFlags: []MutuallyExclusiveFlags{{
+					Flags: [][]Flag{
+						{&BoolFlag{Name: "b1"}},
+						{&BoolFlag{Name: "b2"}},
+					},
+				}},
+			},
+		},
+	}
+
+	tests := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "plain command suggests its flags",
+			args: []string{"foo", "plain", "-", completionFlag},
+			want: []string{"--b0"},
+		},
+		{
+			name: "mutex command suggests every group flag",
+			args: []string{"foo", "mutex", "-", completionFlag},
+			want: []string{"--b1", "--b2"},
+		},
+		{
+			name: "mutex command suggests no group flag after one is set",
+			args: []string{"foo", "mutex", "--b1", "-", completionFlag},
+			want: []string{},
+		},
+		{
+			name: "mutex command suggests no group flag after the other is set",
+			args: []string{"foo", "mutex", "--b2", "-", completionFlag},
+			want: []string{},
+		},
+		{
+			name: "mutex flag typed again after one is set is not complete",
+			args: []string{"foo", "mutex", "--b1", "--b2", completionFlag},
+			want: []string{},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			r := require.New(t)
+			out.Reset()
+			r.NoError(cmd.Run(buildTestContext(t), test.args))
+			r.Equal(test.want, strings.Fields(out.String()))
+		})
+	}
+}
+
 func TestCompletionAfterShortFlag(t *testing.T) {
 	// "-c" is the short flag itself, so it must not suggest the long flags
 	// whose names start with "c". With a space after it, the shells would

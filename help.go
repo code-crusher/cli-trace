@@ -230,7 +230,7 @@ func cliArgContains(flagName string, args []string) bool {
 	return false
 }
 
-func printFlagSuggestions(lastArg string, flags []Flag, writer io.Writer) {
+func printFlagSuggestions(lastArg string, flags []Flag, groups []MutuallyExclusiveFlags, writer io.Writer) {
 	// Trim to handle both "-short" and "--long" flags.
 	cur := strings.TrimLeft(lastArg, "-")
 	// A short flag written out in full, such as "-c", is that flag and not
@@ -243,6 +243,13 @@ func printFlagSuggestions(lastArg string, flags []Flag, writer io.Writer) {
 		}
 	}
 	for _, flag := range flags {
+		// A flag of a mutually exclusive group in which another flag is
+		// already set would error if completed, so it is not suggested
+		// (https://github.com/urfave/cli/issues/2209).
+		if mutexGroupFlagExcluded(flag, groups) {
+			continue
+		}
+
 		if vf, ok := flag.(VisibleFlag); ok && !vf.IsVisible() {
 			continue
 		}
@@ -270,6 +277,30 @@ func printFlagSuggestions(lastArg string, flags []Flag, writer io.Writer) {
 			fmt.Fprintln(writer, flagCompletion)
 		}
 	}
+}
+
+// mutexGroupFlagExcluded reports whether flag belongs to a mutually
+// exclusive group in which a flag is already set. Once a group has one of
+// its flags on the command line, completing any other member would produce
+// an "incorrect usage" error, so none of the members is suggested
+// (https://github.com/urfave/cli/issues/2209).
+func mutexGroupFlagExcluded(flag Flag, groups []MutuallyExclusiveFlags) bool {
+	flagNames := flag.Names()
+	for _, group := range groups {
+		if _, _, set := group.findSetFlag(0); !set {
+			continue
+		}
+		for _, alternatives := range group.Flags {
+			for _, other := range alternatives {
+				if slices.ContainsFunc(other.Names(), func(name string) bool {
+					return slices.Contains(flagNames, name)
+				}) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // isCompleteFlag reports whether arg is a flag that needs nothing more: one
@@ -325,7 +356,11 @@ func DefaultCompleteWithFlags(ctx context.Context, cmd *Command) {
 				}
 			}
 		}
-		printFlagSuggestions(lastArg, flags, cmd.Root().Writer)
+		var groups []MutuallyExclusiveFlags
+		for _, pCmd := range cmd.Lineage() {
+			groups = append(groups, pCmd.MutuallyExclusiveFlags...)
+		}
+		printFlagSuggestions(lastArg, flags, groups, cmd.Root().Writer)
 		// The last argument may be the flag being typed, as in "app --debug<TAB>",
 		// or one before the cursor, as in "app --debug <TAB>". The bash, zsh and
 		// fish scripts keep only the suggestions that match the word being typed,
