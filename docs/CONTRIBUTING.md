@@ -127,9 +127,15 @@ Those with a history of contributing to this project will likely be invited to j
 @urfave/cli team. As a member of the @urfave/cli team, you will have the ability to fully
 administer pull requests, issues, and other repository bits.
 
+There is no fixed number of contributions that qualifies someone for membership. The
+current maintainers extend invitations on a case-by-case basis as they get to know a
+contributor and their work, so the best way to work toward an invitation is to keep
+submitting quality contributions and being a helpful participant in reviews and issues.
+
 If you feel that you should be a member of the @urfave/cli team but have not yet been
 added, the most likely explanation is that this is an accidental oversight! :sweat_smile:.
-Please open an issue!
+Please open an issue and one of the current maintainers will follow up with you about
+next steps.
 
 <!--
 vim:tw=90
