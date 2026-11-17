@@ -102,22 +102,36 @@ func suggestFlag(flags []Flag, provided string, hideHelp bool) string {
 	distance := 0.0
 	suggestion := ""
 
+	// The help flag is suggested alongside the command's flags even
+	// when it is not among them (e.g. a bare flag list). Read the
+	// global once; considering its names twice when it is already in
+	// the list is harmless.
+	var helpNames []string
+	if !hideHelp {
+		if global := HelpFlag; global != nil {
+			helpNames = global.Names()
+		}
+	}
+
+	consider := func(name string) {
+		if newDistance := jaroWinkler(name, provided); newDistance > distance {
+			distance = newDistance
+			suggestion = name
+		}
+	}
+
 	for _, flag := range flags {
 		flagNames := flag.Names()
 		// Hidden flags must not be suggested; help is still offered.
 		if vf, ok := flag.(VisibleFlag); ok && !vf.IsVisible() {
 			flagNames = nil
 		}
-		if !hideHelp && HelpFlag != nil {
-			flagNames = append(flagNames, HelpFlag.Names()...)
-		}
 		for _, name := range flagNames {
-			newDistance := jaroWinkler(name, provided)
-			if newDistance > distance {
-				distance = newDistance
-				suggestion = name
-			}
+			consider(name)
 		}
+	}
+	for _, name := range helpNames {
+		consider(name)
 	}
 
 	if len(suggestion) == 0 {

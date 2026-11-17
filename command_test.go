@@ -8333,3 +8333,89 @@ func TestCommand_RunAgainChecksRequiredFlagsAndSources(t *testing.T) {
 	r.NoError(cmd.Run(buildTestContext(t), []string{"app"}))
 	r.Equal("from-env", cmd.String("name"))
 }
+
+// TestHelpFlagResolutionIsStableAcrossRuns checks that the global
+// HelpFlag is consulted when each command is set up and that each command
+// keeps the flag it resolved with, instead of re-reading the global later.
+func TestHelpFlagResolutionIsStableAcrossRuns(t *testing.T) {
+	r := require.New(t)
+
+	oldHelpFlag := HelpFlag
+	t.Cleanup(func() { HelpFlag = oldHelpFlag })
+
+	HelpFlag = &BoolFlag{
+		Name:    "halp",
+		Aliases: []string{"halp-alias"},
+		Usage:   "custom help",
+	}
+
+	newCmd := func() *Command {
+		return &Command{
+			Name:   "app",
+			Writer: io.Discard,
+			Action: func(context.Context, *Command) error { return nil },
+		}
+	}
+
+	// The flag is cloned per command, so mutating the global after the
+	// first run does not affect commands that were already set up, and
+	// each new command sees the global as it was when it was set up.
+	cmd := newCmd()
+	r.NoError(cmd.Run(buildTestContext(t), []string{"app", "--halp"}))
+
+	HelpFlag = &BoolFlag{Name: "renamed", Usage: "renamed help"}
+	cmd2 := newCmd()
+	r.NoError(cmd2.Run(buildTestContext(t), []string{"app", "--renamed"}))
+}
+
+// TestEnsureHelpFlagIdempotent checks that the resolved help flag is
+// recorded on the command, so repeated resolution passes do not append
+// the built-in help flag twice.
+func TestEnsureHelpFlagIdempotent(t *testing.T) {
+	r := require.New(t)
+
+	oldHelpFlag := HelpFlag
+	t.Cleanup(func() { HelpFlag = oldHelpFlag })
+
+	HelpFlag = &BoolFlag{Name: "halp", Usage: "custom help"}
+
+	count := func(cmd *Command) int {
+		n := 0
+		for _, f := range cmd.Flags {
+			for _, name := range f.Names() {
+				if name == "halp" {
+					n++
+				}
+			}
+		}
+		return n
+	}
+
+	cmd := &Command{Name: "app"}
+	cmd.ensureHelpFlag(true)
+	r.Equal(1, count(cmd), "built-in help flag should be appended exactly once")
+	first := cmd.helpFlag
+	r.NotNil(first)
+
+	cmd.ensureHelpFlag(true)
+	r.Equal(1, count(cmd), "re-running resolution must not duplicate the help flag")
+	r.Same(first, cmd.helpFlag, "the resolved help flag must not change")
+}
+
+// TestEnsureHelpFlagNilGlobal checks that a nil global HelpFlag disables
+// the built-in help flag entirely instead of panicking.
+func TestEnsureHelpFlagNilGlobal(t *testing.T) {
+	r := require.New(t)
+
+	oldHelpFlag := HelpFlag
+	t.Cleanup(func() { HelpFlag = oldHelpFlag })
+
+	HelpFlag = nil
+	cmd := &Command{Name: "app"}
+	cmd.ensureHelpFlag(true)
+	r.Nil(cmd.helpFlag)
+	r.False(cmd.checkHelp())
+	for _, f := range cmd.Flags {
+		r.NotContains(f.Names(), "help")
+	}
+}

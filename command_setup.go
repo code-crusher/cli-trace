@@ -249,7 +249,8 @@ func (cmd *Command) ensureHelp() {
 
 	helpCommand := buildHelpCommand(true)
 
-	if !cmd.hideHelp() {
+	hideHelp := cmd.hideHelp()
+	if !hideHelp {
 		if cmd.Command(helpCommand.Name) == nil {
 			if !cmd.hideHelpCommand() {
 				// Drop any alias a user command already claims (e.g. h
@@ -262,32 +263,52 @@ func (cmd *Command) ensureHelp() {
 				cmd.appendCommand(helpCommand)
 			}
 		}
-
-		if HelpFlag != nil {
-			if !cmd.globaHelpFlagAdded {
-				var localHelpFlag Flag
-				if globalHelpFlag, ok := HelpFlag.(*BoolFlag); ok {
-					flag := *globalHelpFlag
-					// Drop any alias a user flag already claims (e.g. -h
-					// for --host) so the user flag wins but --help still
-					// works, as for the version flag.
-					flag.Aliases = dropClashingAliases(flag.Aliases, cmd.allFlags(), flag.Name)
-					localHelpFlag = &flag
-				} else {
-					localHelpFlag = HelpFlag
-				}
-
-				if !flagNamesInUse(cmd.allFlags(), localHelpFlag.Names()) {
-					tracef("appending HelpFlag (cmd=%[1]q)", cmd.Name)
-					cmd.appendFlag(localHelpFlag)
-					cmd.helpFlag = localHelpFlag
-					cmd.globaHelpFlagAdded = true
-				}
-			} else {
-				tracef("HelpFlag already added, skip (cmd=%[1]q)", cmd.Name)
-			}
-		}
 	}
+	cmd.ensureHelpFlag(!hideHelp)
+}
+
+// ensureHelpFlag resolves the flag that triggers help for cmd and records
+// it on cmd.helpFlag. Reading the global HelpFlag exactly once here keeps
+// concurrent runs from observing a half-initialized flag and keeps the
+// other code paths from touching the global.
+//
+// A *BoolFlag global is cloned per command so parallel runs don't share
+// mutable flag state. Aliases already claimed by a user flag are dropped
+// so the user flag wins. If no name of the help flag is free, or the
+// global is a different Flag implementation, the user flag that took the
+// primary name still triggers help. When appendBuiltIn is false (hideHelp
+// is set) the built-in flag is not added; a user flag that took the help
+// flag's name still triggers help. If HelpFlag is nil, cmd.helpFlag
+// stays nil and no help flag is recognized.
+func (cmd *Command) ensureHelpFlag(appendBuiltIn bool) {
+	if cmd.helpFlag != nil {
+		// already resolved (ensureHelp may run more than once for the
+		// same command); don't add the built-in flag twice
+		return
+	}
+	helpFlag := HelpFlag
+	if helpFlag == nil {
+		return
+	}
+	candidate := helpFlag
+	if globalHelpFlag, ok := helpFlag.(*BoolFlag); ok {
+		flag := *globalHelpFlag
+		// Drop any alias a user flag already claims (e.g. -h
+		// for --host) so the user flag wins but --help still
+		// works, as for the version flag.
+		flag.Aliases = dropClashingAliases(flag.Aliases, cmd.allFlags(), flag.Name)
+		candidate = &flag
+	}
+	if appendBuiltIn && !flagNamesInUse(cmd.allFlags(), candidate.Names()) {
+		tracef("appending HelpFlag (cmd=%[1]q)", cmd.Name)
+		cmd.appendFlag(candidate)
+		cmd.helpFlag = candidate
+		return
+	}
+	// The built-in flag is not appended: help is hidden, or every name
+	// of the help flag is taken by a user flag. In both cases a user
+	// flag that took the help flag's name still triggers help.
+	cmd.helpFlag = cmd.lFlag(helpFlag.Names()[0])
 }
 
 // dropClashingAliases removes aliases from `aliases` that are already

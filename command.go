@@ -180,13 +180,14 @@ type Command struct {
 	// after which only positional arguments are accepted and nothing is
 	// suggested. The request is still a completion, never a command run.
 	shellCompletionPastDoubleDash bool
-	// whether global help flag was added
-	globaHelpFlagAdded bool
 	// whether global version flag was added
 	globaVersionFlagAdded bool
 	// generated root version flag
 	versionFlag Flag
-	// generated help flag
+	// the flag that triggers help for this command: the flag appended by
+	// ensureHelp, or the user flag that took the help flag's name.
+	// Resolved once per setup by ensureHelp; nil when help is disabled or
+	// the global HelpFlag is nil.
 	helpFlag Flag
 	// whether this is a completion command
 	isCompletionCommand bool
@@ -207,13 +208,12 @@ func (cmd *Command) Command(name string) *Command {
 func (cmd *Command) checkHelp() bool {
 	tracef("checking if help is wanted (cmd=%[1]q)", cmd.Name)
 
-	helpFlag := cmd.helpFlag
-	if helpFlag == nil && HelpFlag != nil {
-		// A user flag that took the name of the help flag, such as
-		// HelpFlag itself listed in Flags, still shows help.
-		helpFlag = cmd.lFlag(HelpFlag.Names()[0])
-	}
-	return helpFlag != nil && slices.ContainsFunc(helpFlag.Names(), cmd.Bool)
+	// helpFlag is the per-command flag resolved by ensureHelp, so this
+	// never consults the global HelpFlag. If the user took over the help
+	// flag's name, their flag is what ends up here and it only shows help
+	// when it is set. If help is hidden or the global HelpFlag was nil,
+	// helpFlag is nil and no help flag is checked.
+	return cmd.helpFlag != nil && slices.ContainsFunc(cmd.helpFlag.Names(), cmd.Bool)
 }
 
 func (cmd *Command) checkDuplicateFlagNames() error {
